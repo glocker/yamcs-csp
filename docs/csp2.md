@@ -119,6 +119,10 @@ maximum-size payloads, CRC in both modes, and deliberately corrupted packets.
   1.x. Postprocessor only appends the CRC in the configured mode. An opt-in
   mode in which postprocessor fills link-level fields (such as the source
   address) may be added later without changing this behavior.
+- The header parser `CspHeader.parse(byte[])` rejects an array shorter than 6 bytes with an
+  `IllegalArgumentException`. This differs from CSP 1.x helper `CspPacket` in Yamcs, whose static getters don't
+  check length and fail with an `ArrayIndexOutOfBoundsException`. Callers check the length first: the packet
+  preprocessor logs a warning for a packet shorter than header and drops it, as it does for CSP 1.x.
 - Supported Yamcs versions: 5.13.x.
 - License: AGPL-3.0, like the official Yamcs plugins that link against
   `yamcs-core`.
