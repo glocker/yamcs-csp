@@ -44,6 +44,23 @@ public final class CspHeader {
     }
 
     /**
+     * Creates header from its decoded field values
+     *
+     * @throws IllegalArgumentException
+     *             if any field is outside its range
+     */
+    public static CspHeader of(int priority, int destination, int source, int destinationPort, int sourcePort,
+            int flags) {
+        checkRange("priority", priority, PRIORITY_MASK);
+        checkRange("destination", destination, DESTINATION_MASK);
+        checkRange("source", source, SOURCE_MASK);
+        checkRange("destinationPort", destinationPort, PORT_MASK);
+        checkRange("sourcePort", sourcePort, PORT_MASK);
+        checkRange("flags", flags, FLAGS_MASK);
+        return new CspHeader(priority, destination, source, destinationPort, sourcePort, flags);
+    }
+
+    /**
      * Decodes a header from the first {@link #SIZE} bytes of the given array
      * <p>
      * Unlike the CSP 1.x helper in Yamcs, which fails with an arbitrary exception on a short array, this method
@@ -71,6 +88,27 @@ public final class CspHeader {
         int sourcePort = (secondWindow >>> SOURCE_PORT_SHIFT) & PORT_MASK;
         int flags = secondWindow & FLAGS_MASK;
         return new CspHeader(priority, destination, source, destinationPort, sourcePort, flags);
+    }
+
+    /**
+     * Encodes header into new {@link #SIZE}-byte array in CSP 2.x wire order,
+     * most significant byte first
+     */
+    public byte[] encode() {
+        int firstWindow = (priority << PRIORITY_SHIFT) | destination;
+        int secondWindow = (source << SOURCE_SHIFT) | (destinationPort << DESTINATION_PORT_SHIFT)
+                | (sourcePort << SOURCE_PORT_SHIFT) | flags;
+
+        byte[] bytes = new byte[SIZE];
+        ByteArrayUtils.encodeUnsignedShort(firstWindow, bytes, 0);
+        ByteArrayUtils.encodeInt(secondWindow, bytes, 2);
+        return bytes;
+    }
+
+    private static void checkRange(String field, int value, int maximum) {
+        if (value < 0 || value > maximum) {
+            throw new IllegalArgumentException(field + " must be between 0 and " + maximum + ", got " + value);
+        }
     }
 
     public int getPriority() {
