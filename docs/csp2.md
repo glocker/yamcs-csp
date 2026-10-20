@@ -123,8 +123,12 @@ maximum-size payloads, CRC in both modes, and deliberately corrupted packets.
   `IllegalArgumentException`. This differs from CSP 1.x helper `CspPacket` in Yamcs, whose static getters don't
   check length and fail with an `ArrayIndexOutOfBoundsException`. Callers check the length first: the packet
   preprocessor logs a warning for a packet shorter than header and drops it, as it does for CSP 1.x.
-- Header construction uses `CspHeader.of(...)` followed by `encode()`. The header object remains immutable and each encoding produces new 6-byte array. Field values outside the CSP 2.x ranges are rejected with an `IllegalArgumentException` instead of being silently truncated by bit masks.
-
+- Header construction uses `CspHeader.of(...)` followed by `encode()`. The header object remains immutable, and each
+  encoding produces a new 6-byte array. Field values outside the CSP 2.x ranges are rejected with an
+  `IllegalArgumentException` instead of being silently truncated by bit masks.
+- CRC operations are kept separate from header encoding. `CspCrc.append(...)` generates either data-only or
+  header + data CRC according to explicit `CspCrcMode`; `CspCrc.verify(...)` without mode accepts either variant,
+  matching libcsp 2.x receive behavior. A frame too short to contain both 6-byte header and 4-byte trailer is invalid.
 - Supported Yamcs versions: 5.13.x.
 - License: AGPL-3.0, like the official Yamcs plugins that link against
   `yamcs-core`.
