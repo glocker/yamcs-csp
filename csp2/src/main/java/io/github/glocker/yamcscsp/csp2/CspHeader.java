@@ -26,6 +26,7 @@ public final class CspHeader {
     private static final int SOURCE_PORT_SHIFT = 6;
     private static final int PORT_MASK = 0x3F;
     private static final int FLAGS_MASK = 0x3F;
+    private static final int CRC_FLAG = 0x01;
 
     private final int priority;
     private final int destination;
@@ -133,6 +134,10 @@ public final class CspHeader {
 
     public int getFlags() {
         return flags;
+    }
+
+    public boolean hasCrc() {
+        return (flags & CRC_FLAG) != 0;
     }
 
     @Override

@@ -92,9 +92,10 @@ Subject to change while module is being implemented.
 
 Preprocessor options:
 
-- `cspId` (integer or list): drop packets whose destination is not listed.
+- `cspId` (integer or list in the range 0–16383): drop packets whose destination is not listed.
   Same name as in 1.x preprocessor. Default: accept all.
-- `crcMode`: which CRC variants to accept. Default: both.
+- `crcMode`: CRC variants accepted for packets carrying the CRC flag. Values are `both`, `data`, and `header_data`.
+  Default: `both`.
 
 Postprocessor options:
 
@@ -129,6 +130,9 @@ maximum-size payloads, CRC in both modes, and deliberately corrupted packets.
 - CRC operations are kept separate from header encoding. `CspCrc.append(...)` generates either data-only or
   header + data CRC according to explicit `CspCrcMode`; `CspCrc.verify(...)` without mode accepts either variant,
   matching libcsp 2.x receive behavior. A frame too short to contain both 6-byte header and 4-byte trailer is invalid.
+- The packet preprocessor leaves accepted frame bytes unchanged for Mission Database decoding. It drops frames shorter
+  than 6-byte header and frames rejected by destination filter. Failed or missing CRC on a frame carrying
+  CRC flag produces a warning and marks `TmPacket` invalid instead of dropping it.
 - Supported Yamcs versions: 5.13.x.
 - License: AGPL-3.0, like the official Yamcs plugins that link against
   `yamcs-core`.
