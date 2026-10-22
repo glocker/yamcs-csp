@@ -99,8 +99,10 @@ Preprocessor options:
 
 Postprocessor options:
 
-- `crcMode`: which CRC variant to generate.
-- `maximumTcPacketLength`: same meaning as in 1.x postprocessor.
+- `crcMode`: CRC variant generated for commands carrying the CRC flag. Values are `data` and `header_data`.
+  Default: `data`, matching a default libcsp 2.1 build.
+- `maximumTcPacketLength`: maximum final command length, including the 4-byte CRC trailer when present.
+  Default: unlimited.
 
 ## Testing strategy
 
@@ -117,9 +119,9 @@ maximum-size payloads, CRC in both modes, and deliberately corrupted packets.
 ## Design decisions
 
 - Header of an outgoing command is produced by Mission Database, as with
-  1.x. Postprocessor only appends the CRC in the configured mode. An opt-in
-  mode in which postprocessor fills link-level fields (such as the source
-  address) may be added later without changing this behavior.
+  1.x. If the header carries the CRC flag, the postprocessor appends the CRC in the configured transmit mode; otherwise
+  it leaves the command bytes unchanged. An opt-in mode in which the postprocessor fills link-level fields (such as the
+  source address) may be added later without changing this behavior.
 - The header parser `CspHeader.parse(byte[])` rejects an array shorter than 6 bytes with an
   `IllegalArgumentException`. This differs from CSP 1.x helper `CspPacket` in Yamcs, whose static getters don't
   check length and fail with an `ArrayIndexOutOfBoundsException`. Callers check the length first: the packet
@@ -133,6 +135,8 @@ maximum-size payloads, CRC in both modes, and deliberately corrupted packets.
 - The packet preprocessor leaves accepted frame bytes unchanged for Mission Database decoding. It drops frames shorter
   than 6-byte header and frames rejected by destination filter. Failed or missing CRC on a frame carrying
   CRC flag produces a warning and marks `TmPacket` invalid instead of dropping it.
+- Сommand postprocessor rejects commands shorter than 6-byte header or longer than `maximumTcPacketLength`.
+  Rejection publishes both `Acknowledge_Sent = NOK` and `CommandComplete = NOK` and returns no binary to link.
 - Supported Yamcs versions: 5.13.x.
 - License: AGPL-3.0, like the official Yamcs plugins that link against
   `yamcs-core`.
