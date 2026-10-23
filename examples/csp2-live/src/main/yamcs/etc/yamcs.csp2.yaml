@@ -1,0 +1,52 @@
+services:
+  - class: org.yamcs.ProcessorCreatorService
+    args:
+      name: realtime
+      type: realtime
+  - class: org.yamcs.archive.CommandHistoryRecorder
+  - class: org.yamcs.archive.EventRecorder
+
+mdb:
+  - type: xtce
+    spec: mdb/csp2.xml
+
+dataLinks:
+  - name: csp2_tm
+    class: org.yamcs.tctm.UdpTmDataLink
+    stream: tm_realtime
+    port: 10015
+    packetPreprocessorClassName: io.github.glocker.yamcscsp.csp2.CspPacketPreprocessor
+    packetPreprocessorArgs:
+      cspId: 16383
+      crcMode: both
+    invalidPackets: DIVERT
+    invalidPacketsStream: invalid_tm
+
+  - name: csp2_tc
+    class: org.yamcs.tctm.UdpTcDataLink
+    stream: tc_realtime
+    host: localhost
+    port: 10025
+    commandPostprocessorClassName: io.github.glocker.yamcscsp.csp2.CspCommandPostprocessor
+    commandPostprocessorArgs:
+      crcMode: data
+      maximumTcPacketLength: 256
+
+streamConfig:
+  tm:
+    - name: tm_realtime
+      rootContainer: /CSP2/CspPacket
+      processor: realtime
+  invalidTm: invalid_tm
+  tc:
+    - tc_realtime
+  cmdHist:
+    - cmdhist_realtime
+    - cmdhist_dump
+  event:
+    - events_realtime
+    - events_dump
+  param:
+    - pp_realtime
+    - sys_param
+    - proc_param

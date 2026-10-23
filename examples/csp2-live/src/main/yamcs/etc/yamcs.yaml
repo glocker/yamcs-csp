@@ -1,0 +1,8 @@
+services:
+  - class: org.yamcs.http.HttpServer
+
+instances:
+  - csp2
+
+dataDir: data
+secretKey: csp2-live-development-key

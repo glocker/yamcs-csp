@@ -1,0 +1,61 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<SpaceSystem name="CSP2">
+  <Header validationStatus="Unknown" version="0.1.0" date="2026-10-23T00:00:00Z"/>
+
+  <TelemetryMetaData>
+    <ParameterTypeSet>
+      <IntegerParameterType name="uint2" signed="false">
+        <IntegerDataEncoding encoding="unsigned" sizeInBits="2"/>
+      </IntegerParameterType>
+      <IntegerParameterType name="uint6" signed="false">
+        <IntegerDataEncoding encoding="unsigned" sizeInBits="6"/>
+      </IntegerParameterType>
+      <IntegerParameterType name="uint8" signed="false">
+        <IntegerDataEncoding encoding="unsigned" sizeInBits="8"/>
+      </IntegerParameterType>
+      <IntegerParameterType name="uint14" signed="false">
+        <IntegerDataEncoding encoding="unsigned" sizeInBits="14"/>
+      </IntegerParameterType>
+    </ParameterTypeSet>
+
+    <ParameterSet>
+      <Parameter name="priority" parameterTypeRef="uint2"/>
+      <Parameter name="destination" parameterTypeRef="uint14"/>
+      <Parameter name="source" parameterTypeRef="uint14"/>
+      <Parameter name="destination_port" parameterTypeRef="uint6"/>
+      <Parameter name="source_port" parameterTypeRef="uint6"/>
+      <Parameter name="flags" parameterTypeRef="uint6"/>
+      <Parameter name="payload_0" parameterTypeRef="uint8"/>
+      <Parameter name="payload_1" parameterTypeRef="uint8"/>
+      <Parameter name="payload_2" parameterTypeRef="uint8"/>
+    </ParameterSet>
+
+    <ContainerSet>
+      <SequenceContainer name="CspPacket">
+        <EntryList>
+          <ParameterRefEntry parameterRef="priority"/>
+          <ParameterRefEntry parameterRef="destination"/>
+          <ParameterRefEntry parameterRef="source"/>
+          <ParameterRefEntry parameterRef="destination_port"/>
+          <ParameterRefEntry parameterRef="source_port"/>
+          <ParameterRefEntry parameterRef="flags"/>
+          <ParameterRefEntry parameterRef="payload_0"/>
+          <ParameterRefEntry parameterRef="payload_1"/>
+          <ParameterRefEntry parameterRef="payload_2"/>
+        </EntryList>
+      </SequenceContainer>
+    </ContainerSet>
+  </TelemetryMetaData>
+
+  <CommandMetaData>
+    <MetaCommandSet>
+      <MetaCommand name="SendReferencePacket">
+        <CommandContainer name="SendReferencePacket">
+          <EntryList>
+            <FixedValueEntry name="csp_header_and_payload" binaryValue="BFFF0007F141010203" sizeInBits="72"/>
+          </EntryList>
+        </CommandContainer>
+      </MetaCommand>
+    </MetaCommandSet>
+  </CommandMetaData>
+</SpaceSystem>
