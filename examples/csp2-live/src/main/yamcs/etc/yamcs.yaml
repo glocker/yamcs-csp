@@ -3,6 +3,7 @@ services:
 
 instances:
   - csp2
+  - interop
 
 dataDir: data
 secretKey: csp2-live-development-key

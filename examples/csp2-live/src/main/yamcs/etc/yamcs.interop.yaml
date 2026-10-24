@@ -1,0 +1,71 @@
+services:
+  - class: org.yamcs.ProcessorCreatorService
+    args:
+      name: realtime
+      type: realtime
+  # Dedicated processors route the same MDB command to TC streams with different CRC coverage.
+  - class: org.yamcs.ProcessorCreatorService
+    args:
+      name: data
+      type: data
+  - class: org.yamcs.ProcessorCreatorService
+    args:
+      name: header_data
+      type: header_data
+  - class: org.yamcs.archive.CommandHistoryRecorder
+  - class: org.yamcs.archive.EventRecorder
+
+mdb:
+  - type: xtce
+    spec: mdb/csp2.xml
+
+dataLinks:
+  - name: csp2_tm
+    class: org.yamcs.tctm.UdpTmDataLink
+    stream: tm_realtime
+    port: 11015
+    packetPreprocessorClassName: io.github.glocker.yamcscsp.csp2.CspPacketPreprocessor
+    packetPreprocessorArgs:
+      cspId: 1
+      crcMode: both
+
+  - name: csp2_tc_data
+    class: org.yamcs.tctm.UdpTcDataLink
+    stream: tc_data
+    host: localhost
+    port: 11025
+    commandPostprocessorClassName: io.github.glocker.yamcscsp.csp2.CspCommandPostprocessor
+    commandPostprocessorArgs:
+      crcMode: data
+      maximumTcPacketLength: 256
+
+  - name: csp2_tc_header_data
+    class: org.yamcs.tctm.UdpTcDataLink
+    stream: tc_header_data
+    host: localhost
+    port: 11026
+    commandPostprocessorClassName: io.github.glocker.yamcscsp.csp2.CspCommandPostprocessor
+    commandPostprocessorArgs:
+      crcMode: header_data
+      maximumTcPacketLength: 256
+
+streamConfig:
+  tm:
+    - name: tm_realtime
+      rootContainer: /CSP2/CspPacket
+      processor: realtime
+  invalidTm: invalid_tm
+  tc:
+    - tc_realtime
+    - tc_data
+    - tc_header_data
+  cmdHist:
+    - cmdhist_realtime
+    - cmdhist_dump
+  event:
+    - events_realtime
+    - events_dump
+  param:
+    - pp_realtime
+    - sys_param
+    - proc_param

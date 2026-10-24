@@ -143,8 +143,10 @@ maximum-size payloads, CRC in both modes, and deliberately corrupted packets.
 
 ## Compatibility
 
-Plugin targets libcsp 2.1 (commit `48f7fb0`) at level of UDP
-frame format: header and CRC32 in both modes.
+Plugin is compatible with libcsp 2.1 (commit `48f7fb0b57f610bf65bab1aa2d1357c3b9722782`) at the UDP frame level.
+Compatibility is verified byte for byte with libcsp generated reference vectors and by live bidirectional UDP exchange
+with libcsp nodes built in both CRC modes. Yamcs accepts telemetry and libcsp accepts commands in data only and
+header + data modes.
 
 Not supported: RDP, HMAC, fragmentation, and transports other than UDP and TCP
 links of Yamcs. libcsp is the only reference implementation used.

@@ -56,6 +56,14 @@
           </EntryList>
         </CommandContainer>
       </MetaCommand>
+      <MetaCommand name="SendInteropPacket">
+        <CommandContainer name="SendInteropPacket">
+          <EntryList>
+            <!-- CSP destination 228, source 1, destination port 10, source port 5, CRC32 flag, payload 010203. -->
+            <FixedValueEntry name="csp_header_and_payload" binaryValue="80E40004A141010203" sizeInBits="72"/>
+          </EntryList>
+        </CommandContainer>
+      </MetaCommand>
     </MetaCommandSet>
   </CommandMetaData>
 </SpaceSystem>

@@ -9,3 +9,15 @@ realtime:
     subscribeAll: true
     tmProcessor:
       ignoreOutOfContainerEntries: false
+
+data:
+  services:
+    - class: org.yamcs.StreamTcCommandReleaser
+      args:
+        stream: tc_data
+
+header_data:
+  services:
+    - class: org.yamcs.StreamTcCommandReleaser
+      args:
+        stream: tc_header_data
