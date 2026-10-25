@@ -78,7 +78,7 @@ int main(int argc, char **argv) {
     csp_bind(&socket, CSP_ANY);
     csp_listen(&socket, 4);
 
-    // Give the router thread time to start before submitting first packet
+    // Give router thread time to start before submitting first packet
     usleep(500000);
     csp_conn_t *telemetry_connection = csp_connect(
             CSP_PRIO_NORM, YAMCS_ADDRESS, TELEMETRY_PORT, 1000, CSP_O_CRC32);

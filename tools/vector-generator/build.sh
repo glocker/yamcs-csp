@@ -3,7 +3,7 @@
 # Builds pinned libcsp in both CRC variants and generates reference vectors with each of them
 #
 # Usage:   bash build.sh
-# Needs:   git, cmake, ninja and a C compiler (Ubuntu: sudo apt install build-essential cmake ninja-build git)
+# Needs:   git, cmake, ninja and C compiler (Ubuntu: sudo apt install build-essential cmake ninja-build git)
 # Output:  vectors-<variant>.csv and vectors-<variant>.meta.toml in $WORK_DIR/out
 #
 # Environment overrides: WORK_DIR (default ~/vector-generator-work), OUT_DIR (default $WORK_DIR/out),

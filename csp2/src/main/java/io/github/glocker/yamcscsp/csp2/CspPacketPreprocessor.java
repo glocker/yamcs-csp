@@ -9,7 +9,16 @@ import org.yamcs.TmPacket;
 import org.yamcs.YConfiguration;
 import org.yamcs.tctm.AbstractPacketPreprocessor;
 
-/** Packet preprocessor for CSP 2.x telemetry */
+/**
+ * Yamcs packet preprocessor for CSP 2.x telemetry.
+ * <p>
+ * Validates minimum header length, optionally filters destination addresses, verifies flagged CRC trailers, and supplies
+ * Yamcs generation time and sequence count values absent from CSP header. Accepted frame bytes are not modified before
+ * Mission Database decoding.
+ * <p>
+ * Configuration keys: {@code cspId} (one address or address list) and {@code crcMode} ({@code both}, {@code data}, or
+ * {@code header_data}).
+ */
 public class CspPacketPreprocessor extends AbstractPacketPreprocessor {
 
     private static final String CONFIG_CSP_ID = "cspId";
@@ -27,16 +36,38 @@ public class CspPacketPreprocessor extends AbstractPacketPreprocessor {
         HEADER_AND_DATA
     }
 
+    /**
+     * Creates preprocessor accepting every destination and both libcsp CRC coverage modes.
+     *
+     * @param yamcsInstance
+     *            Yamcs instance name
+     */
     public CspPacketPreprocessor(String yamcsInstance) {
         this(yamcsInstance, YConfiguration.emptyConfig());
     }
 
+    /**
+     * Creates preprocessor from Yamcs link configuration.
+     *
+     * @param yamcsInstance
+     *            Yamcs instance name
+     * @param config
+     *            preprocessor configuration
+     * @throws ConfigurationException
+     *             if address or CRC mode is invalid
+     */
     public CspPacketPreprocessor(String yamcsInstance, YConfiguration config) {
         super(yamcsInstance, config);
         cspIdFilter = readCspIdFilter(config);
         crcMode = readCrcMode(config);
     }
 
+    /**
+     * Processes one CSP 2.x frame.
+     *
+     * @return original packet with Yamcs metadata, or {@code null} when too short or filtered by destination; CRC failure
+     *         marks returned packet invalid instead of dropping it
+     */
     @Override
     public TmPacket process(TmPacket packet) {
         byte[] bytes = packet.getPacket();
@@ -64,12 +95,24 @@ public class CspPacketPreprocessor extends AbstractPacketPreprocessor {
         return packet;
     }
 
-    /** Returns reception time because a CSP header carries no generation time */
+    /**
+     * Returns reception time because CSP header carries no generation time.
+     *
+     * @param packet
+     *            packet being processed
+     * @return packet reception time
+     */
     protected long getGenerationTime(TmPacket packet) {
         return packet.getReceptionTime();
     }
 
-    /** Returns local rotating sequence count because CSP header carries no sequence count */
+    /**
+     * Returns local rotating sequence count because CSP header carries no sequence count.
+     *
+     * @param packet
+     *            packet being processed
+     * @return next local count in range {@code 0..65535}
+     */
     protected int getSequenceCount(TmPacket packet) {
         return sequenceCount.accumulateAndGet(1, (value, increment) -> value >= MAX_SEQUENCE_COUNT ? 0 : value + increment);
     }

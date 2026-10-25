@@ -1,152 +1,163 @@
-# CSP 2.x support
+# CSP 2.x in Yamcs
 
-Protocol notes and design of `csp2` module.
+Yamcs 5.13 includes CSP support, but its packet classes use CSP 1.x layout: 4-byte header and 5-bit addresses. Feeding a CSP 2.x frame into that code would decode wrong fields before CRC is even checked.
 
-Reference implementation: [libcsp](https://github.com/libcsp/libcsp) v2.1,
-commit `48f7fb0`. File names below refer to that commit.
+`csp2` module adds separate packet processors for CSP 2.x. It does not replace Yamcs transport links or turn Yamcs into a CSP router.
 
-## Scope
+Implementation was checked against [libcsp](https://github.com/libcsp/libcsp) v2.1 at commit `48f7fb0b57f610bf65bab1aa2d1357c3b9722782`. Source paths below refer to that commit.
 
-In scope:
+## Header
 
-- a packet preprocessor: header parsing, destination filtering, CRC32 verification;
-- a command postprocessor: CRC32 generation; command header comes from
-  Mission Database (see [Design decisions](#design-decisions));
-- transport through existing Yamcs UDP and TCP links.
+CSP 2.x packs these fields into 6 bytes:
 
-Out of scope: ZeroMQ transport, RDP, HMAC, fragmentation. Packets with those
-flags are passed through untouched.
+| Field            | Bits |
+|------------------|------|
+| priority         | 2    |
+| destination      | 14   |
+| source           | 14   |
+| destination port | 6    |
+| source port      | 6    |
+| flags            | 6    |
 
-## CSP 2.x header
+Bytes are transmitted most significant first. libcsp defines masks and shifts in `src/csp_id.c` as `CSP_ID2_*`.
 
-The header is 48 bits, transmitted most significant byte first: priority (2
-bits), destination (14), source (14), destination port (6), source port (6),
-flags (6). Source: `src/csp_id.c`, `CSP_ID2_*`.
+CSP version cannot be detected from packet bytes. CSP 1.x and 2.x interpret same leading bits differently, so correct preprocessor must be chosen in link configuration.
 
-CSP 1.x uses a 32-bit header with 5-bit addresses and 8 flag bits. The two
-versions cannot be told apart from the bytes alone; the version is a property
-of the network and is configured per link.
-
-Plugin acts only on the CRC32 flag (`0x01`). The RDP (`0x02`), HMAC
-(`0x08`) and fragmentation (`0x10`) flags are not interpreted
-(`include/csp/csp_types.h`).
+Plugin reads CRC32 flag (`0x01`). RDP (`0x02`), HMAC (`0x08`) and fragmentation (`0x10`) bits are preserved but not processed.
 
 ## CRC32
 
-The algorithm is CRC-32C (Castagnoli), as in the CSP 1.x preprocessor of
-Yamcs. The CRC is appended after the payload, big-endian, and is present only
-if the CRC32 flag is set.
+CRC turned out to be main compatibility trap.
 
-What is new in 2.x is range the CRC covers. libcsp knows two modes:
+Both versions use CRC-32C (Castagnoli), stored after payload with most significant byte first. Trailer exists only when CRC32 flag is set. Difference is which bytes libcsp includes in calculation:
 
-- **data only**: payload; this is what the 1.x preprocessor of Yamcs
-  checks;
-- **header and data**: 6-byte header followed by the payload.
+- `data`: payload only;
+- `header_data`: 6-byte header followed by payload.
 
-libcsp treats two directions differently:
+At pinned libcsp commit, sending behavior is selected at compile time in `src/csp_crc32.c`. Default build uses payload only. Building with `CSP_21` uses header plus payload.
 
-- Receiving side (`csp_crc32_verify`): tries header-and-data first, and
-  accepts packet if data-only matches.
-- Sending side (`csp_crc32_append`): the mode is chosen at compile time by the
-  `CSP_21` macro. At commit `48f7fb0` macro is only referenced in
-  `src/csp_crc32.c` and defined nowhere else in the tree, so a default build
-  produces data-only CRCs. Deployment can build libcsp with `CSP_21`
-  defined and get header-and-data CRCs.
+Receive function `csp_crc32_verify` accepts both. Plugin follows that behavior by default, otherwise valid telemetry would depend on how remote libcsp was compiled. Sending cannot try both, so command postprocessor needs one configured mode.
 
-Consequence: plugin must verify both modes, and its transmit mode must be
-configurable to match the spacecraft's build.
+See [ADR 0001](adr/0001-crc-modes.md) for decision history.
 
-## Wire format on UDP
+## UDP packets and Yamcs links
 
-`src/interfaces/csp_if_udp.c` sends one CSP packet per datagram:
-header, payload, optional CRC. Yamcs UDP link hands whole datagram
-to preprocessor, which leaves it unchanged (as 1.x preprocessor
-does); header fields are decoded by Mission Database.
+libcsp UDP interface (`src/interfaces/csp_if_udp.c`) sends one complete CSP packet per UDP datagram:
 
-### Choosing Yamcs links
+```text
+6-byte header | payload | optional 4-byte CRC
+```
 
-Libcsp UDP interface sends to a fixed remote port (`rport`) and listens on a
-fixed local port (`lport`). `UdpTcTmDataLink` connects its socket to remote
-host and port and takes the local port from the operating system, so it only
-receives datagrams that come back from that same remote address. It will not
-receive telemetry from a libcsp node configured this way.
+Preprocessor receives whole datagram and leaves accepted bytes unchanged. XTCE Mission Database decodes header and payload fields.
 
-Use two links instead: `UdpTmDataLink` (listens on `port`) with packet
-preprocessor, and `UdpTcDataLink` (sends to `host:port`) with command
-postprocessor.
+One combined `UdpTcTmDataLink` looked attractive, but it does not fit usual libcsp UDP setup. libcsp listens on fixed `lport` and sends to fixed `rport`; combined Yamcs link uses an operating-system-selected local port and only accepts replies from connected peer.
 
-## Planned components
+Use two links instead:
 
-Package `io.github.glocker.yamcscsp.csp2`.
+- `UdpTmDataLink` listens for telemetry;
+- `UdpTcDataLink` sends commands.
 
-| Component                | Responsibility                                                                |
-|--------------------------|-------------------------------------------------------------------------------|
-| CSP 2.x packet accessor  | Read and write header fields on a `byte[]`                                    |
-| CRC helper               | CRC-32C in both modes, big-endian append and verify                           |
-| Packet preprocessor      | Length check, destination filter, CRC verification, generation time, sequence |
-| Command postprocessor    | CRC generation in the configured mode, maximum length check                   |
+Working configuration is available in [`examples/csp2-live`](../examples/csp2-live).
 
-### Planned configuration
+## Java classes
 
-Subject to change while module is being implemented.
+Package: `io.github.glocker.yamcscsp.csp2`
 
-Preprocessor options:
+| Class                     | Role |
+|---------------------------|------|
+| `CspHeader`               | Validate, decode and encode 6-byte header |
+| `CspCrc`                  | Calculate, append and verify CRC-32C |
+| `CspPacketPreprocessor`   | Validate telemetry, filter destination and set Yamcs metadata |
+| `CspCommandPostprocessor` | Append command CRC and enforce final length limit |
 
-- `cspId` (integer or list in the range 0–16383): drop packets whose destination is not listed.
-  Same name as in 1.x preprocessor. Default: accept all.
-- `crcMode`: CRC variants accepted for packets carrying the CRC flag. Values are `both`, `data`, and `header_data`.
-  Default: `both`.
+## Telemetry configuration
 
-Postprocessor options:
+```yaml
+packetPreprocessorClassName: io.github.glocker.yamcscsp.csp2.CspPacketPreprocessor
+packetPreprocessorArgs:
+  cspId: 1
+  crcMode: both
+```
 
-- `crcMode`: CRC variant generated for commands carrying the CRC flag. Values are `data` and `header_data`.
-  Default: `data`, matching a default libcsp 2.1 build.
-- `maximumTcPacketLength`: maximum final command length, including the 4-byte CRC trailer when present.
-  Default: unlimited.
+| Option    | Type                    | Default | Meaning |
+|-----------|-------------------------|---------|---------|
+| `cspId`   | integer or integer list | unset   | Accept listed 14-bit destination addresses (`0..16383`). Unset accepts all. |
+| `crcMode` | string                  | `both`  | Accepted CRC coverage: `data`, `header_data`, or `both`. |
 
-## Testing strategy
+`crcMode` does not require every packet to carry CRC. Packet without CRC32 flag skips verification.
 
-Codec must match libcsp byte for byte. Reference vectors are produced by
-libcsp itself (`tools/vector-generator`) and stored under
-`csp2/src/test/resources/vectors`. Because transmit CRC mode is a build
-option, the vectors are generated from two libcsp builds: default and with
-`CSP_21` defined.
+When flagged CRC fails, packet is marked invalid and warning event is emitted. Packet is still returned, so corrupted telemetry can be recorded and inspected. Frames shorter than 6-byte header and frames rejected by `cspId` are dropped.
 
-Vector coverage: boundary values of every header field (address 0 and 16383,
-port 0 and 63, all priorities), each flag alone and combined, empty and
-maximum-size payloads, CRC in both modes, and deliberately corrupted packets.
+CSP header has no timestamp or packet counter. Preprocessor uses Yamcs reception time as generation time and assigns local 16-bit sequence count. Those values describe ingestion into Yamcs, not data sent by spacecraft.
 
-## Design decisions
+Multiple local addresses can share one TM link:
 
-- Header of an outgoing command is produced by Mission Database, as with
-  1.x. If the header carries the CRC flag, the postprocessor appends the CRC in the configured transmit mode; otherwise
-  it leaves the command bytes unchanged. An opt-in mode in which the postprocessor fills link-level fields (such as the
-  source address) may be added later without changing this behavior.
-- The header parser `CspHeader.parse(byte[])` rejects an array shorter than 6 bytes with an
-  `IllegalArgumentException`. This differs from CSP 1.x helper `CspPacket` in Yamcs, whose static getters don't
-  check length and fail with an `ArrayIndexOutOfBoundsException`. Callers check the length first: the packet
-  preprocessor logs a warning for a packet shorter than header and drops it, as it does for CSP 1.x.
-- Header construction uses `CspHeader.of(...)` followed by `encode()`. The header object remains immutable, and each
-  encoding produces a new 6-byte array. Field values outside the CSP 2.x ranges are rejected with an
-  `IllegalArgumentException` instead of being silently truncated by bit masks.
-- CRC operations are kept separate from header encoding. `CspCrc.append(...)` generates either data-only or
-  header + data CRC according to explicit `CspCrcMode`; `CspCrc.verify(...)` without mode accepts either variant,
-  matching libcsp 2.x receive behavior. A frame too short to contain both 6-byte header and 4-byte trailer is invalid.
-- The packet preprocessor leaves accepted frame bytes unchanged for Mission Database decoding. It drops frames shorter
-  than 6-byte header and frames rejected by destination filter. Failed or missing CRC on a frame carrying
-  CRC flag produces a warning and marks `TmPacket` invalid instead of dropping it.
-- Сommand postprocessor rejects commands shorter than 6-byte header or longer than `maximumTcPacketLength`.
-  Rejection publishes both `Acknowledge_Sent = NOK` and `CommandComplete = NOK` and returns no binary to link.
-- Supported Yamcs versions: 5.13.x.
-- License: AGPL-3.0, like the official Yamcs plugins that link against
-  `yamcs-core`.
+```yaml
+packetPreprocessorArgs:
+  cspId: [1, 2, 16383]
+  crcMode: header_data
+```
 
-## Compatibility
+## Command configuration
 
-Plugin is compatible with libcsp 2.1 (commit `48f7fb0b57f610bf65bab1aa2d1357c3b9722782`) at the UDP frame level.
-Compatibility is verified byte for byte with libcsp generated reference vectors and by live bidirectional UDP exchange
-with libcsp nodes built in both CRC modes. Yamcs accepts telemetry and libcsp accepts commands in data only and
-header + data modes.
+```yaml
+commandPostprocessorClassName: io.github.glocker.yamcscsp.csp2.CspCommandPostprocessor
+commandPostprocessorArgs:
+  crcMode: data
+  maximumTcPacketLength: 256
+```
 
-Not supported: RDP, HMAC, fragmentation, and transports other than UDP and TCP
-links of Yamcs. libcsp is the only reference implementation used.
+| Option                  | Type    | Default | Meaning |
+|-------------------------|---------|---------|---------|
+| `crcMode`               | string  | `data`  | Generated CRC coverage: `data` or `header_data`. |
+| `maximumTcPacketLength` | integer | `-1`    | Maximum final length including CRC. `-1` disables limit. |
+
+MDB must provide complete 6-byte CSP header followed by command payload. Postprocessor does not fill addresses or ports. It appends CRC only when header has CRC32 flag.
+
+This follows existing Yamcs CSP 1.x behavior and avoids two owners for same header fields. Details are in [ADR 0002](adr/0002-command-header-owner.md).
+
+Commands shorter than header or longer than configured final limit are not sent. Command history receives `Acknowledge_Sent = NOK` and `CommandComplete = NOK`.
+
+## How compatibility is checked
+
+Java tests do not calculate their own expected frames. A C generator links against pinned libcsp and produces complete UDP frames from two builds: default and `CSP_21`.
+
+Vectors cover:
+
+- minimum and maximum values of every header field;
+- all priorities and flag combinations;
+- empty and maximum payloads;
+- both CRC modes;
+- corrupted CRC, missing trailer and short frame.
+
+Scheduled CI rebuilds libcsp in Docker and compares generated files byte-for-byte. [ADR 0004](adr/0004-reference-vectors.md) explains why this is separate from Java implementation.
+
+Stored vectors are not only evidence. Live example starts Yamcs and real libcsp nodes, then checks both directions:
+
+- libcsp telemetry is accepted by Yamcs;
+- Yamcs command is accepted by libcsp;
+- exchange passes in both CRC modes.
+
+## Supported scope
+
+Verified combination:
+
+- Yamcs 5.13.x;
+- libcsp 2.1 at pinned commit above;
+- CSP 2.x UDP frames;
+- CRC-32C in both libcsp modes.
+
+Not implemented:
+
+- RDP state;
+- HMAC verification;
+- fragmentation and reassembly;
+- ZeroMQ transport;
+- CRC mode negotiation;
+- CSP routing.
+
+Flag bits for unsupported features are not rejected, but plugin does not validate data associated with them. This pass-through behavior is not support for those protocols.
+
+Existing Yamcs TCP links may be used only when they deliver complete CSP frame boundaries to preprocessor. Live interoperability has been verified over UDP, not TCP.
+
+Project license is `AGPL-3.0-only`; see [ADR 0003](adr/0003-license.md).

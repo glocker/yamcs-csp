@@ -3,19 +3,19 @@ package io.github.glocker.yamcscsp.csp2;
 import org.yamcs.utils.ByteArrayUtils;
 
 /**
- * 48 bit header of a CSP 2.x packet: priority, destination, source, destination port, source port and flags
+ * Immutable representation of 48-bit CSP 2.x header.
  * <p>
- * The header is transmitted most significant byte first
+ * Wire layout: priority (2 bits), destination (14 bits), source (14 bits), destination port (6 bits), source port
+ * (6 bits), and flags (6 bits). Most significant byte is transmitted first.
  */
 public final class CspHeader {
 
-    /** Size of an encoded header in bytes */
+    /** Encoded CSP 2.x header size in bytes. */
     public static final int SIZE = 6;
 
     /*
-     * The 48 header bits are read as two windows: the first 2 bytes hold the priority and the destination (16 bits),
-     * the following 4 bytes hold the source, the destination port, the source port and the flags (32 bits). Every
-     * shift below counts from the least significant bit of its own window
+     * Header is read as two windows: first 2 bytes hold priority and destination (16 bits); following 4 bytes hold
+     * source, destination port, source port and flags (32 bits). Shifts count from least significant bit of each window
      */
     private static final int PRIORITY_SHIFT = 14;
     private static final int PRIORITY_MASK = 0x3;
@@ -45,8 +45,21 @@ public final class CspHeader {
     }
 
     /**
-     * Creates header from its decoded field values
+     * Creates header from decoded field values.
      *
+     * @param priority
+     *            packet priority in range {@code 0..3}
+     * @param destination
+     *            destination address in range {@code 0..16383}
+     * @param source
+     *            source address in range {@code 0..16383}
+     * @param destinationPort
+     *            destination port in range {@code 0..63}
+     * @param sourcePort
+     *            source port in range {@code 0..63}
+     * @param flags
+     *            six-bit flags value in range {@code 0..63}
+     * @return immutable validated header
      * @throws IllegalArgumentException
      *             if any field is outside its range
      */
@@ -62,17 +75,16 @@ public final class CspHeader {
     }
 
     /**
-     * Decodes a header from the first {@link #SIZE} bytes of the given array
+     * Decodes header from first {@link #SIZE} bytes of supplied array.
      * <p>
-     * Unlike the CSP 1.x helper in Yamcs, which fails with an arbitrary exception on a short array, this method
-     * rejects a short array explicitly. The caller is expected to check the length in advance: the packet
-     * preprocessor logs a warning for short packets and drops them.
+     * Unlike CSP 1.x helper in Yamcs, which fails with unexpected exception on short input, this method rejects short
+     * input explicitly. Caller should check length first; packet preprocessor logs warning and drops short packets.
      *
      * @param bytes
-     *            the encoded header; may be longer than {@link #SIZE}, the rest is ignored
-     * @return the decoded header
+     *            encoded header; bytes after {@link #SIZE} are ignored
+     * @return decoded header
      * @throws IllegalArgumentException
-     *             if the array is shorter than {@link #SIZE} bytes
+     *             if array is shorter than {@link #SIZE} bytes
      */
     public static CspHeader parse(byte[] bytes) {
         if (bytes.length < SIZE) {
@@ -83,7 +95,7 @@ public final class CspHeader {
 
         int priority = (firstWindow >>> PRIORITY_SHIFT) & PRIORITY_MASK;
         int destination = firstWindow & DESTINATION_MASK;
-        // The second window is a signed int and negative if its top bit is set: shift with >>> and mask
+        // Signed second window becomes negative when top bit is set; use >>> before masking
         int source = (secondWindow >>> SOURCE_SHIFT) & SOURCE_MASK;
         int destinationPort = (secondWindow >>> DESTINATION_PORT_SHIFT) & PORT_MASK;
         int sourcePort = (secondWindow >>> SOURCE_PORT_SHIFT) & PORT_MASK;
@@ -92,8 +104,9 @@ public final class CspHeader {
     }
 
     /**
-     * Encodes header into new {@link #SIZE}-byte array in CSP 2.x wire order,
-     * most significant byte first
+     * Encodes header into new {@link #SIZE}-byte array in CSP 2.x wire order, most significant byte first.
+     *
+     * @return new encoded array on every call
      */
     public byte[] encode() {
         int firstWindow = (priority << PRIORITY_SHIFT) | destination;
@@ -112,29 +125,36 @@ public final class CspHeader {
         }
     }
 
+
     public int getPriority() {
         return priority;
     }
+
 
     public int getDestination() {
         return destination;
     }
 
+
     public int getSource() {
         return source;
     }
+
 
     public int getDestinationPort() {
         return destinationPort;
     }
 
+
     public int getSourcePort() {
         return sourcePort;
     }
 
+
     public int getFlags() {
         return flags;
     }
+
 
     public boolean hasCrc() {
         return (flags & CRC_FLAG) != 0;

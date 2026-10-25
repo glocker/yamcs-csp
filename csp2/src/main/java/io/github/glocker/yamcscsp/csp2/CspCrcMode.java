@@ -1,11 +1,11 @@
 package io.github.glocker.yamcscsp.csp2;
 
-/** Defines which part of CSP 2.x frame is covered by CRC-32C */
+/** Defines CSP 2.x frame bytes covered by CRC-32C. */
 public enum CspCrcMode {
 
-    /** Only payload is covered */
+    /** Covers payload after 6-byte CSP header. */
     DATA_ONLY,
 
-    /** 6-byte header followed by payload is covered */
+    /** Covers 6-byte CSP header followed by payload. */
     HEADER_AND_DATA
 }

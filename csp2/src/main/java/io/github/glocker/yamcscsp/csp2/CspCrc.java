@@ -5,19 +5,26 @@ import java.util.zip.CRC32C;
 
 import org.yamcs.utils.ByteArrayUtils;
 
-/** CRC-32C operations for CSP 2.x frames */
+/**
+ * CRC-32C operations for CSP 2.x frames.
+ * <p>
+ * Supports payload-only coverage used by default libcsp 2.1 build and header-plus-payload coverage selected by
+ * libcsp's {@code CSP_21} compile-time macro. CRC trailers are encoded most significant byte first.
+ */
 public final class CspCrc {
 
-    /** Size of CRC-32C trailer in bytes */
+    /** Encoded CRC-32C trailer size in bytes. */
     public static final int SIZE = 4;
 
     private CspCrc() {
     }
 
     /**
-     * Computes CRC-32C over all supplied bytes
+     * Computes CRC-32C over all supplied bytes.
      *
-     * @return unsigned 32-bit CRC value stored in a Java {@code int}
+     * @param bytes
+     *            bytes covered by calculation
+     * @return unsigned 32-bit CRC value stored in Java {@code int}
      */
     public static int compute(byte[] bytes) {
         var crc = new CRC32C();
@@ -26,14 +33,15 @@ public final class CspCrc {
     }
 
     /**
-     * Returns a copy of CSP 2.x header + payload frame with big-endian CRC-32C trailer appended
+     * Copies CSP 2.x header + payload and appends big-endian CRC-32C trailer.
      *
      * @param frame
-     *            6-byte CSP header followed by payload, without a CRC trailer
+     *            6-byte CSP header followed by payload, without CRC trailer
      * @param mode
      *            which bytes are covered by CRC
+     * @return new array containing {@code frame} and its four-byte trailer
      * @throws IllegalArgumentException
-     *             if {@code frame} is shorter than a CSP 2.x header
+     *             if {@code frame} is shorter than CSP 2.x header
      */
     public static byte[] append(byte[] frame, CspCrcMode mode) {
         requireHeader(frame);
@@ -45,10 +53,12 @@ public final class CspCrc {
     }
 
     /**
-     * Verifies a CSP 2.x frame using one CRC coverage mode
+     * Verifies CSP 2.x frame using one CRC coverage mode.
      *
      * @param frame
      *            6-byte CSP header, payload and 4-byte CRC trailer
+     * @param mode
+     *            coverage mode to verify
      * @return {@code false} if frame is too short to contain header and trailer, or if CRC doesn't match
      */
     public static boolean verify(byte[] frame, CspCrcMode mode) {
@@ -63,9 +73,11 @@ public final class CspCrc {
     }
 
     /**
-     * Verifies CSP 2.x frame using both CRC modes accepted by libcsp 2.x receivers
+     * Verifies CSP 2.x frame using both CRC modes accepted by libcsp 2.x receivers.
      *
-     * @return {@code true} if either header + data or data only CRC matches
+     * @param frame
+     *            6-byte CSP header, payload and 4-byte CRC trailer
+     * @return {@code true} if either header-plus-data or data-only CRC matches
      */
     public static boolean verify(byte[] frame) {
         return verify(frame, CspCrcMode.HEADER_AND_DATA) || verify(frame, CspCrcMode.DATA_ONLY);

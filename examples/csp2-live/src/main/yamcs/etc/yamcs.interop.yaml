@@ -3,7 +3,7 @@ services:
     args:
       name: realtime
       type: realtime
-  # Dedicated processors route the same MDB command to TC streams with different CRC coverage.
+  # Dedicated processors route same MDB command to TC streams with different CRC coverage.
   - class: org.yamcs.ProcessorCreatorService
     args:
       name: data

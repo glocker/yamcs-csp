@@ -1,0 +1,46 @@
+name: Golden vectors
+
+on:
+  schedule:
+    - cron: "23 3 * * *"
+  workflow_dispatch:
+  push:
+    paths:
+      - "tools/vector-generator/**"
+      - "csp2/src/test/resources/vectors/**"
+      - ".github/workflows/golden-vectors.yml"
+  pull_request:
+    paths:
+      - "tools/vector-generator/**"
+      - "csp2/src/test/resources/vectors/**"
+      - ".github/workflows/golden-vectors.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  compare:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Build vector generator image
+        run: docker build --tag yamcs-csp-vector-generator tools/vector-generator
+
+      - name: Regenerate vectors with pinned libcsp
+        run: |
+          mkdir generated-vectors
+          docker run --rm --volume "${{ github.workspace }}/generated-vectors:/out" yamcs-csp-vector-generator
+
+      - name: Compare generated files byte-for-byte
+        run: diff --recursive --unified csp2/src/test/resources/vectors generated-vectors
+
+      - name: Upload regenerated vectors on failure
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: regenerated-vectors
+          path: generated-vectors
+          if-no-files-found: warn

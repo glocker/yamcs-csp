@@ -1,0 +1,50 @@
+name: Live integration
+
+on:
+  push:
+    paths:
+      - "csp2/**"
+      - "examples/csp2-live/**"
+      - "pom.xml"
+      - "*/pom.xml"
+      - ".github/workflows/live-integration.yml"
+  pull_request:
+    paths:
+      - "csp2/**"
+      - "examples/csp2-live/**"
+      - "pom.xml"
+      - "*/pom.xml"
+      - ".github/workflows/live-integration.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  live-integration:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+          cache: maven
+
+      - name: Install current plugin snapshot
+        run: mvn --batch-mode --no-transfer-progress install
+
+      - name: Verify live Yamcs integration
+        working-directory: examples/csp2-live
+        run: python3 tools/verify_live.py
+
+      - name: Upload Yamcs log on failure
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: live-integration-log
+          path: examples/csp2-live/target/live-verification.log
+          if-no-files-found: warn

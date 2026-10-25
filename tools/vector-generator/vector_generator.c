@@ -1,19 +1,17 @@
 /*
- * Reference vector generator for the csp2 module
+ * Reference vector generator for csp2 module
  *
  * Builds CSP 2.x frames with real libcsp (csp_crc32_append and csp_id_prepend) and prints one CSV line per
- * case. A frame is what libcsp puts into one UDP datagram: 6 header bytes, payload and, if CRC32 flag is
- * set, a 4 byte CRC32 trailer.
+ * case. Frame matches one libcsp UDP datagram: 6 header bytes, payload and, when CRC32 flag is set, 4-byte
+ * CRC32 trailer.
  *
- * The CRC mode (checksum over the data only, or over header and data) is selected when libcsp is built, by
- * the CSP_21 macro. The generator therefore detects mode by observing linked library and prints it, so the
- * label of a vector file can never disagree with the library that produced it.
+ * CRC mode (data only, or header and data) is selected when libcsp is built, by CSP_21 macro. Generator detects
+ * mode by observing linked library and prints it, so vector label cannot disagree with library that produced it.
  *
  * Output columns:
  *   name,crc_mode,priority,destination,source,destination_port,source_port,flags,payload_hex,frame_hex,expected
- * payload_hex is the application payload before the CRC is added ("-" if empty). frame_hex is the exact byte
- * sequence of the frame. expected is the verdict of libcsp (csp_crc32_verify) for the frame, or "too_short" for a
- * frame shorter than the 6 byte header.
+ * payload_hex is application payload before CRC is added ("-" if empty). frame_hex is exact frame byte sequence.
+ * expected is libcsp verdict (csp_crc32_verify), or "too_short" for frame shorter than 6-byte header.
  */
 
 #include <csp/csp.h>
@@ -83,7 +81,7 @@ static void die(const char *message) {
     exit(EXIT_FAILURE);
 }
 
-/* Fill a zeroed packet with header fields and deterministic payload 01 02 03 ... (wrapping at 255). */
+/* Fill zeroed packet with header fields and deterministic payload 01 02 03 ... (wrapping at 255). */
 static void fill_packet(csp_packet_t *packet, const struct vector_case *c) {
     memset(packet, 0, sizeof(*packet));
     packet->id.pri = c->priority;
@@ -98,7 +96,7 @@ static void fill_packet(csp_packet_t *packet, const struct vector_case *c) {
     packet->length = c->payload_length;
 }
 
-/* Ask libcsp which CRC mode it was built with, by comparing its CRC with the two possible ones. */
+/* Detect libcsp build mode by comparing its CRC with both possible values. */
 static const char *detect_crc_mode(void) {
     static const struct vector_case probe = {"probe", 2, 2, 1, 3, 4, CSP_FCRC32, 3, KIND_NORMAL};
     csp_packet_t appended;
@@ -129,8 +127,8 @@ static const char *detect_crc_mode(void) {
 }
 
 /*
- * Build frame the way libcsp sends it: append CRC first, then prepend the header. The order matters:
- * header prepend computes the frame length, so it must see the final payload length including the CRC trailer.
+ * Build frame as libcsp sends it: append CRC first, then prepend header. Order matters because header prepend computes
+ * frame length and must see final payload length including CRC trailer.
  */
 static size_t build_frame(const struct vector_case *c, uint8_t *frame) {
     csp_packet_t packet;
@@ -158,7 +156,7 @@ static size_t build_frame(const struct vector_case *c, uint8_t *frame) {
     return length;
 }
 
-/* Let libcsp judge printed bytes, as a receiver would after stripping the header. */
+/* Let libcsp judge printed bytes as receiver would after stripping header. */
 static const char *expected_result(const struct vector_case *c, const uint8_t *frame, size_t length) {
     if (c->kind == KIND_TRUNCATED) {
         return "too_short";

@@ -1,76 +1,83 @@
-# vector-generator
+# libcsp reference vector generator
 
-A small C program that links against libcsp and writes reference test vectors
-for `csp2` module, plus script that builds everything.
+Java codec needs expected bytes produced outside Java implementation. This tool links a small C program against real libcsp and records complete CSP 2.x UDP frames for tests.
 
-Reference: libcsp v2.1, commit `48f7fb0b57f610bf65bab1aa2d1357c3b9722782`
-(script refuses to run on any other commit or on modified checkout).
+Pinned reference:
 
-## Why two builds
-
-The CRC mode libcsp uses when sending is chosen when the library is built (
-`CSP_21` macro, see [../../docs/csp2.md](../../docs/csp2.md)):
-
-| Variant       | Build                                   | CRC covers              |
-|---------------|-----------------------------------------|-------------------------|
-| `data`        | default                                 | payload only            |
-| `header_data` | `CMAKE_C_FLAGS=-DCSP_21=1`              | 6 byte header + payload |
-
-`build.sh` builds libcsp statically in both variants, links the generator
-against each one and writes one vector file per variant.
-
-## Usage
-
-Requires Linux with `git`, `cmake`, `ninja` and a C compiler.
-
-libcsp does not build natively on macOS, because its sources include
-`<endian.h>`, which macOS does not provide. Its CMake build handles Linux,
-Cygwin (experimental) and embedded targets (FreeRTOS, Zephyr) only, so native
-Windows is not supported either. On macOS or Windows run the script in a Linux
-virtual machine, a container, or WSL (Windows Subsystem for Linux).
-
+```text
+libcsp v2.1
+48f7fb0b57f610bf65bab1aa2d1357c3b9722782
 ```
+
+`build.sh` refuses another commit or modified libcsp checkout.
+
+## Why libcsp is built twice
+
+libcsp chooses transmit CRC coverage at compile time:
+
+| Variant       | Build                      | CRC covers              |
+|---------------|----------------------------|-------------------------|
+| `data`        | default                    | payload only            |
+| `header_data` | `CMAKE_C_FLAGS=-DCSP_21=1` | 6-byte header + payload |
+
+Generator is linked separately against each static library. It also detects actual CRC behavior before labelling output, so file name cannot silently disagree with linked build.
+
+More detail: [CSP 2.x CRC notes](../../docs/csp2.md#crc32).
+
+## Run on Linux
+
+Required tools: Git, CMake, Ninja and C compiler.
+
+```sh
 bash build.sh
 ```
 
-The libcsp checkout and build directories live in `~/vector-generator-work`
-(override with `WORK_DIR`); results go to its `out/` subdirectory (override with
-`OUT_DIR`). Copy generated files to `csp2/src/test/resources/vectors`.
+libcsp source and builds go to `~/vector-generator-work`; override with `WORK_DIR`. Generated files go to its `out/` directory; override with `OUT_DIR`.
+
+libcsp v2.1 does not build natively on macOS because its source expects `<endian.h>`. On macOS or Windows, use Docker, Linux VM, or WSL.
+
+## Run in Docker
+
+From repository root:
+
+```sh
+docker build --tag yamcs-csp-vector-generator tools/vector-generator
+mkdir -p target/generated-vectors
+docker run --rm \
+  --volume "$PWD/target/generated-vectors:/out" \
+  yamcs-csp-vector-generator
+diff --recursive --unified \
+  csp2/src/test/resources/vectors target/generated-vectors
+```
+
+No `diff` output means generated files match committed vectors byte-for-byte. `Golden vectors` workflow repeats this check every night on Linux.
 
 ## Output
 
-For every variant: `vectors-<variant>.csv` and `vectors-<variant>.meta.toml`
-(libcsp repository, tag and commit, build method, CMake flags, meaning).
+Each build writes CSV and provenance file:
 
-The CSV starts with `#` comment lines (`# crc_mode=<variant>` and the column
-list); every other line is one case:
-
+```text
+vectors-data.csv
+vectors-data.meta.toml
+vectors-header_data.csv
+vectors-header_data.meta.toml
 ```
+
+CSV columns:
+
+```text
 name,crc_mode,priority,destination,source,destination_port,source_port,flags,payload_hex,frame_hex,expected
 ```
 
-- `crc_mode` is detected by generator from behaviour of linked
-  libcsp, so the label can't disagree with library that produced file;
-  `build.sh` also checks it against the variant it asked for.
-- `payload_hex` is application payload before the CRC is added (`-` if
-  empty). The payload bytes are `01 02 03 ...`, wrapping after `FF`.
-- `frame_hex` is the exact frame: 6 byte header, payload, and a 4 byte CRC if the
-  CRC32 flag is set. Field numbers are decimal, bytes are upper case hex.
-- `expected` is the verdict of libcsp's `csp_crc32_verify` on the printed bytes
-  (`valid` or `crc_error`), or `too_short` for a frame below the header size.
-- Frames without the CRC32 flag are identical in both files.
+Important fields:
 
-## Cases
+- `payload_hex`: application payload before CRC, or `-` when empty;
+- `frame_hex`: exact UDP frame - 6-byte header, payload and optional 4-byte CRC;
+- `expected`: result from libcsp `csp_crc32_verify`, or `too_short` below header size;
+- `crc_mode`: behavior detected from linked libcsp build.
 
-Boundary values of every header field (address 0 and 16383, port 0 and 63, all
-priorities, flag bits alone and combined, unknown flag bits), empty and
-maximum payload, CRC in both modes, and deliberately broken frames: a flipped
-CRC byte, the CRC32 flag without a trailer, and a frame shorter than the
-header.
+Cases cover field boundaries, all priorities, individual and combined flags, empty and maximum payloads, both CRC modes, corrupted CRC, missing trailer and short frame.
 
-The RDP, HMAC and fragmentation flags are only set in header: generator
-doesn't add RDP, HMAC or fragmentation data they would require on a real
-link, because the csp2 module passes such packets through untouched.
+RDP, HMAC and fragmentation bits are included as header values only. Generator does not create protocol data required by those features because `csp2` does not process them.
 
-The maximum payload is 256 bytes without CRC and 252 bytes with CRC, which is
-the default libcsp packet buffer size (`CSP_BUFFER_SIZE`).
+Maximum payload follows default libcsp packet buffer: 256 bytes without CRC, 252 bytes with CRC.

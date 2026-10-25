@@ -14,7 +14,15 @@ import org.yamcs.tctm.CommandPostprocessor;
 import org.yamcs.tctm.Link;
 import org.yamcs.utils.TimeEncoding;
 
-/** Command postprocessor for CSP 2.x commands */
+/**
+ * Yamcs command postprocessor for CSP 2.x commands.
+ * <p>
+ * Mission Database supplies complete CSP header and payload. When header carries CRC32 flag, postprocessor appends
+ * CRC-32C trailer using configured coverage mode. Header fields remain unchanged.
+ * <p>
+ * Configuration keys are {@code crcMode} ({@code data} or {@code header_data}) and
+ * {@code maximumTcPacketLength} (final length including CRC, or {@code -1} for unlimited).
+ */
 public class CspCommandPostprocessor implements CommandPostprocessor {
 
     private static final String CONFIG_CRC_MODE = "crcMode";
@@ -25,6 +33,12 @@ public class CspCommandPostprocessor implements CommandPostprocessor {
     private CspCrcMode crcMode = CspCrcMode.DATA_ONLY;
     private CommandHistoryPublisher commandHistory;
 
+    /**
+     * Initializes CRC coverage and optional final packet length limit from link configuration.
+     *
+     * @throws ConfigurationException
+     *             if CRC mode or maximum length is invalid
+     */
     @Override
     public void init(String yamcsInstance, YConfiguration config, Link link) {
         maximumTcPacketLength = config.getInt(CONFIG_MAXIMUM_PACKET_LENGTH, -1);
@@ -39,6 +53,12 @@ public class CspCommandPostprocessor implements CommandPostprocessor {
         this.commandHistory = commandHistory;
     }
 
+    /**
+     * Appends CRC trailer when requested by command's CSP header.
+     *
+     * @return processed command bytes, or {@code null} after command history failure when command is shorter than header
+     *         or exceeds configured final length
+     */
     @Override
     public byte[] process(PreparedCommand preparedCommand) {
         byte[] binary = preparedCommand.getBinary();
@@ -59,6 +79,9 @@ public class CspCommandPostprocessor implements CommandPostprocessor {
         return processed;
     }
 
+    /**
+     * Returns final wire length, including CRC trailer when requested by CSP header.
+     */
     @Override
     public int getBinaryLength(PreparedCommand preparedCommand) {
         byte[] binary = preparedCommand.getBinary();
@@ -68,6 +91,7 @@ public class CspCommandPostprocessor implements CommandPostprocessor {
         return binary.length + (CspHeader.parse(binary).hasCrc() ? CspCrc.SIZE : 0);
     }
 
+    /** @return configured maximum final packet length, or {@code -1} when unlimited */
     public int getMaximumTcPacketLength() {
         return maximumTcPacketLength;
     }
