@@ -37,8 +37,14 @@ jobs:
       - name: Install current plugin snapshot
         run: mvn --batch-mode --no-transfer-progress install
 
+      - name: Resolve live example dependencies
+        working-directory: examples/csp2-live
+        run: mvn --batch-mode --no-transfer-progress dependency:go-offline
+
       - name: Verify live Yamcs integration
         working-directory: examples/csp2-live
+        env:
+          YAMCS_STARTUP_TIMEOUT: "120"
         run: python3 tools/verify_live.py
 
       - name: Upload Yamcs log on failure

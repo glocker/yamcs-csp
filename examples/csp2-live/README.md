@@ -48,7 +48,7 @@ TC frame: BFFF0007F141010203F130F21E
 
 Script starts Yamcs, sends valid telemetry frame, reads decoded fields through HTTP API, checks warning produced by corrupted CRC, sends `/CSP2/SendReferencePacket`, and compares outgoing UDP datagram byte-for-byte with reference frame. Yamcs is stopped on success and failure.
 
-Log is written to `target/live-verification.log`.
+Log is written to `target/live-verification.log`. Startup wait defaults to 90 seconds and can be changed with `YAMCS_STARTUP_TIMEOUT`. If Yamcs exits or startup times out, script prints last 80 log lines before failing.
 
 ## Real libcsp interop
 

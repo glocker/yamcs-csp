@@ -3,12 +3,12 @@
 
 import json
 import os
-from pathlib import Path
 import signal
 import socket
 import subprocess
 import sys
 import time
+from pathlib import Path
 from urllib.error import HTTPError, URLError
 from urllib.request import Request, urlopen
 
@@ -18,6 +18,7 @@ BASE_URL = "http://localhost:8090"
 VALID_FRAME = bytes.fromhex("BFFF0007F141010203F130F21E")
 CORRUPTED_FRAME = bytes.fromhex("BFFF0007F141010203F130F21F")
 EXPECTED_COMMAND = VALID_FRAME
+STARTUP_TIMEOUT = int(os.environ.get("YAMCS_STARTUP_TIMEOUT", "90"))
 
 
 def request_json(path, method="GET", body=None):
@@ -30,9 +31,12 @@ def request_json(path, method="GET", body=None):
         return json.loads(payload) if payload else {}
 
 
-def wait_for_server(timeout=30):
+def wait_for_server(process, timeout=STARTUP_TIMEOUT):
     deadline = time.monotonic() + timeout
     while time.monotonic() < deadline:
+        returncode = process.poll()
+        if returncode is not None:
+            raise RuntimeError(f"Yamcs exited during startup with code {returncode}")
         try:
             links = request_json("/api/links/csp2")
             if len(links.get("links", [])) == 2:
@@ -40,7 +44,26 @@ def wait_for_server(timeout=30):
         except (HTTPError, URLError, TimeoutError, json.JSONDecodeError):
             pass
         time.sleep(0.25)
-    raise RuntimeError("Yamcs didn't expose both CSP links within 30 seconds")
+    raise RuntimeError(f"Yamcs didn't expose both CSP links within {timeout} seconds")
+
+
+def stop_process(process):
+    if process.poll() is not None:
+        return
+    os.killpg(process.pid, signal.SIGTERM)
+    try:
+        process.wait(timeout=10)
+    except subprocess.TimeoutExpired:
+        os.killpg(process.pid, signal.SIGKILL)
+        process.wait(timeout=5)
+
+
+def print_log_tail(lines=80):
+    if not LOG.exists():
+        return
+    content = LOG.read_text(encoding="utf-8", errors="replace").splitlines()
+    print(f"--- last {min(lines, len(content))} Yamcs log lines ---", file=sys.stderr)
+    print("\n".join(content[-lines:]), file=sys.stderr)
 
 
 def find_integer(value):
@@ -131,7 +154,7 @@ def main():
             start_new_session=True,
         )
         try:
-            wait_for_server()
+            wait_for_server(process)
             verify_telemetry()
             verify_command()
             print("LIVE VERIFICATION PASSED")
@@ -139,12 +162,7 @@ def main():
             print(f"TC frame: {EXPECTED_COMMAND.hex().upper()}")
             print(f"Log: {LOG}")
         finally:
-            os.killpg(process.pid, signal.SIGTERM)
-            try:
-                process.wait(timeout=10)
-            except subprocess.TimeoutExpired:
-                os.killpg(process.pid, signal.SIGKILL)
-                process.wait(timeout=5)
+            stop_process(process)
 
 
 if __name__ == "__main__":
@@ -153,4 +171,5 @@ if __name__ == "__main__":
     except Exception as error:
         print(f"LIVE VERIFICATION FAILED: {error}", file=sys.stderr)
         print(f"Log: {LOG}", file=sys.stderr)
+        print_log_tail()
         raise
