@@ -89,9 +89,9 @@ After installing plugin snapshot:
 
 ```sh
 cd examples/csp2-live
-mvn org.yamcs:yamcs-maven-plugin:1.3.7:run
+python3 tools/yamcs_runtime.py
 ```
 
-HTTP API is available at `http://localhost:8090`. Stop Yamcs with `Ctrl-C`.
+Launcher builds runtime classpath with Maven, copies Yamcs configuration under `target/yamcs`, and starts `org.yamcs.YamcsServer` directly. HTTP API is available at `http://localhost:8090`. Stop Yamcs with `Ctrl-C`.
 
 Runtime databases, cache files and logs stay under `target/`.

@@ -1,15 +1,16 @@
-#!/usr/bin/env python3
+
 """Verify live UDP interoperability between Yamcs and pinned libcsp 2.1"""
 
 import json
 import os
-from pathlib import Path
-import signal
 import subprocess
 import sys
 import time
+from pathlib import Path
 from urllib.error import HTTPError, URLError
 from urllib.request import Request, urlopen
+
+from yamcs_runtime import start_yamcs, stop_process
 
 ROOT = Path(__file__).resolve().parents[1]
 INTEROP = ROOT / "interop"
@@ -19,6 +20,7 @@ BUILD_LOG = TARGET / "interop-docker-build.log"
 BASE_URL = "http://localhost:8090"
 LIBCSP_COMMIT = "48f7fb0b57f610bf65bab1aa2d1357c3b9722782"
 INTEROP_NODE_ADDRESS = 228
+STARTUP_TIMEOUT = int(os.environ.get("YAMCS_STARTUP_TIMEOUT", "90"))
 # libcsp selects transmit CRC coverage at compile time, so each mode needs its own image and Yamcs processor
 VARIANTS = (
     ("data", 0, 11025, "data"),
@@ -36,9 +38,12 @@ def request_json(path, method="GET", body=None):
         return json.loads(payload) if payload else {}
 
 
-def wait_for_server(timeout=30):
+def wait_for_server(process, timeout=STARTUP_TIMEOUT):
     deadline = time.monotonic() + timeout
     while time.monotonic() < deadline:
+        returncode = process.poll()
+        if returncode is not None:
+            raise RuntimeError(f"Yamcs exited during startup with code {returncode}")
         try:
             links = request_json("/api/links/interop")
             if len(links.get("links", [])) == 3:
@@ -46,7 +51,7 @@ def wait_for_server(timeout=30):
         except (HTTPError, URLError, TimeoutError, json.JSONDecodeError):
             pass
         time.sleep(0.25)
-    raise RuntimeError("Yamcs didn't expose all interop links within 30 seconds")
+    raise RuntimeError(f"Yamcs didn't expose all interop links within {timeout} seconds")
 
 
 def get_tm_count():
@@ -178,17 +183,10 @@ def main():
     subprocess.run(["docker", "info"], check=True, stdout=subprocess.DEVNULL)
     build_images()
 
-    (TARGET / "yamcs" / "tmp").mkdir(parents=True, exist_ok=True)
     with YAMCS_LOG.open("w", encoding="utf-8") as log:
-        yamcs = subprocess.Popen(
-            ["mvn", "org.yamcs:yamcs-maven-plugin:1.3.7:run"],
-            cwd=ROOT,
-            stdout=log,
-            stderr=subprocess.STDOUT,
-            start_new_session=True,
-        )
+        yamcs = start_yamcs(ROOT, log)
         try:
-            wait_for_server()
+            wait_for_server(yamcs)
             for sequence_number, (mode, _, host_port, processor) in enumerate(VARIANTS, start=1):
                 verify_variant(mode, host_port, processor, sequence_number)
             print("LIBCSP INTEROPERABILITY PASSED")
@@ -196,13 +194,7 @@ def main():
             print(f"Yamcs log: {YAMCS_LOG}")
             print(f"Docker build log: {BUILD_LOG}")
         finally:
-            if yamcs.poll() is None:
-                os.killpg(yamcs.pid, signal.SIGTERM)
-                try:
-                    yamcs.wait(timeout=10)
-                except subprocess.TimeoutExpired:
-                    os.killpg(yamcs.pid, signal.SIGKILL)
-                    yamcs.wait(timeout=5)
+            stop_process(yamcs)
 
 
 if __name__ == "__main__":

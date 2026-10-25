@@ -1,16 +1,16 @@
-#!/usr/bin/env python3
+
 """Run Yamcs and verify CSP 2.x telemetry and command paths over UDP"""
 
 import json
 import os
-import signal
 import socket
-import subprocess
 import sys
 import time
 from pathlib import Path
 from urllib.error import HTTPError, URLError
 from urllib.request import Request, urlopen
+
+from yamcs_runtime import start_yamcs, stop_process
 
 ROOT = Path(__file__).resolve().parents[1]
 LOG = ROOT / "target" / "live-verification.log"
@@ -46,16 +46,6 @@ def wait_for_server(process, timeout=STARTUP_TIMEOUT):
         time.sleep(0.25)
     raise RuntimeError(f"Yamcs didn't expose both CSP links within {timeout} seconds")
 
-
-def stop_process(process):
-    if process.poll() is not None:
-        return
-    os.killpg(process.pid, signal.SIGTERM)
-    try:
-        process.wait(timeout=10)
-    except subprocess.TimeoutExpired:
-        os.killpg(process.pid, signal.SIGKILL)
-        process.wait(timeout=5)
 
 
 def print_log_tail(lines=80):
@@ -143,16 +133,9 @@ def verify_command():
 
 
 def main():
-    (ROOT / "target" / "yamcs" / "tmp").mkdir(parents=True, exist_ok=True)
     LOG.parent.mkdir(parents=True, exist_ok=True)
     with LOG.open("w", encoding="utf-8") as log:
-        process = subprocess.Popen(
-            ["mvn", "org.yamcs:yamcs-maven-plugin:1.3.7:run"],
-            cwd=ROOT,
-            stdout=log,
-            stderr=subprocess.STDOUT,
-            start_new_session=True,
-        )
+        process = start_yamcs(ROOT, log)
         try:
             wait_for_server(process)
             verify_telemetry()
