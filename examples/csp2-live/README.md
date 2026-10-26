@@ -4,7 +4,7 @@ Unit tests prove header and CRC bytes, but they do not prove that Yamcs can load
 
 It has two checks:
 
-- quick smoke test using committed libcsp reference frame;
+- quick smoke test that sends committed libcsp reference frames and checks how the MDB decodes them;
 - slower bidirectional test with real libcsp 2.1 nodes built in Docker.
 
 Example stays outside root Maven reactor so normal `mvn verify` remains fast and does not open HTTP or UDP ports.
@@ -15,13 +15,13 @@ Example stays outside root Maven reactor so normal `mvn verify` remains fast and
 - TC: XTCE command -> `CspCommandPostprocessor` -> `UdpTcDataLink` -> UDP `127.0.0.1:10025`
 - Yamcs HTTP API: `http://localhost:8090`
 
-Smoke test uses this libcsp-generated frame:
+Smoke test takes telemetry frames from the libcsp reference vectors in `csp2/src/test/resources/vectors`, the same files the Java tests use. For example, port 11 housekeeping with CRC (default libcsp build):
 
 ```text
-BFFF0007F141 010203 F130F21E
+80010390B1C1 020138FF40E20100 00006040 CAECF29F
 ```
 
-It contains 6-byte CSP 2.x header, 3-byte payload and data-only CRC-32C trailer.
+That is a 6-byte CSP 2.x header, a 12-byte payload and a data-only CRC-32C trailer. How the MDB decodes frames like this one is described in [Decoding frames in the MDB](../../docs/csp2.md#decoding-frames-in-the-mdb).
 
 ## Quick smoke test
 
@@ -42,11 +42,11 @@ Expected result:
 
 ```text
 LIVE VERIFICATION PASSED
-TM frame: BFFF0007F141010203F130F21E
+TM frames decoded as expected: 26
 TC frame: BFFF0007F141010203F130F21E
 ```
 
-Script starts Yamcs, sends valid telemetry frame, reads decoded fields through HTTP API, checks warning produced by corrupted CRC, sends `/CSP2/SendReferencePacket`, and compares outgoing UDP datagram byte-for-byte with reference frame. Yamcs is stopped on success and failure.
+Script starts Yamcs and sends the `mdb_*` vectors from both libcsp builds (data-only and header-plus-data CRC). For every frame it reads the decoded parameters through the HTTP API and compares them with values taken from the vector bytes: header fields, flags, three-byte sample, housekeeping with and without CRC, payloads from empty to maximum length, and a frame for an unknown port. Parameters that the frame does not carry must stay unchanged. Two more frames must not be decoded at all: one addressed to another node and one with a wrong CRC, which must also produce a warning event. Then script sends `/CSP2/SendReferencePacket` and compares the outgoing UDP datagram byte-for-byte with the reference frame. Yamcs is stopped on success and failure.
 
 Log is written to `target/live-verification.log`. Startup wait defaults to 90 seconds and can be changed with `YAMCS_STARTUP_TIMEOUT`. If Yamcs exits or startup times out, script prints last 80 log lines before failing.
 

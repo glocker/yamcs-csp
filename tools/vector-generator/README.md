@@ -78,6 +78,8 @@ Important fields:
 
 Cases cover field boundaries, all priorities, individual and combined flags, empty and maximum payloads, both CRC modes, corrupted CRC, missing trailer and short frame.
 
+Cases named `mdb_*` serve the Mission Database example in [`examples/csp2-live`](../../examples/csp2-live). They use destination 1 (Yamcs) and source 228 (a libcsp node), and the ports defined in that MDB. Most cases carry the ramp payload `01 02 03 ...`; housekeeping cases carry explicit bytes, listed next to the table in `vector_generator.c`.
+
 RDP, HMAC and fragmentation bits are included as header values only. Generator does not create protocol data required by those features because `csp2` does not process them.
 
 Maximum payload follows default libcsp packet buffer: 256 bytes without CRC, 252 bytes with CRC.

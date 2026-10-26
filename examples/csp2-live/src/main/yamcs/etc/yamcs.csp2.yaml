@@ -17,7 +17,8 @@ dataLinks:
     port: 10015
     packetPreprocessorClassName: io.github.glocker.yamcscsp.csp2.CspPacketPreprocessor
     packetPreprocessorArgs:
-      cspId: 16383
+      # 1 is the Yamcs address in the libcsp vectors for the MDB example, 16383 is the largest address
+      cspId: [1, 16383]
       crcMode: both
     invalidPackets: DIVERT
     invalidPacketsStream: invalid_tm

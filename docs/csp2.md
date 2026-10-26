@@ -98,6 +98,21 @@ packetPreprocessorArgs:
   crcMode: header_data
 ```
 
+## Decoding frames in the MDB
+
+The preprocessor does not change accepted bytes, so the Mission Database decodes the header and the payload. A complete example is [`csp2.xml`](../examples/csp2-live/src/main/yamcs/mdb/csp2.xml). It uses these techniques:
+
+- **Header.** Six fields of 2, 14, 14, 6, 6 and 6 bits, always big-endian, in one container named `CspPacket`.
+- **Layout by port.** CSP frames carry no type or length, so child containers are chosen by `destination_port` with `RestrictionCriteria`. The example has port 10 (three fixed bytes), 11 (housekeeping) and 12 (any length). A frame for any other port still produces the header parameters.
+- **Flags.** The flags field is read once as a number and again as single-bit parameters (`flag_crc32`, `flag_rdp`, `flag_hmac`, `flag_frag`). The flags are frame bits 42 to 47, counted from the most significant bit of the first byte, so CRC32 is bit 47. Single-bit parameters can be used in `RestrictionCriteria`, which cannot apply a mask to `flags`.
+- **CRC trailer.** The trailer exists only when the CRC32 flag is set. For a fixed layout, a container below `Housekeeping` is chosen by `flag_crc32` and adds the `hk_crc32` parameter after the payload. The plugin has already verified the value; the parameter only makes it visible.
+- **Payload of any length.** CSP has no length field, so the payload runs to the end of the frame. Yamcs provides `org.yamcs.algo.RemainingBinaryDecoder` for this. The decoded value includes the CRC trailer when the CRC32 flag is set, because Yamcs 5.13.6 does not support the XTCE position "from container end" (`XtceStaxReader` rejects it). Code that needs the payload alone must drop the last four bytes when `flag_crc32` is 1.
+- **Payload byte order.** CSP does not define it; each application decides. The example payloads are little-endian (`byteOrder="leastSignificantByteFirst"`), as a C struct copied from a little-endian CPU would be. Without `byteOrder`, Yamcs reads big-endian.
+
+The example sets `invalidPackets: DIVERT` on the TM link, so a frame with a wrong CRC goes to a separate stream and the MDB never decodes it.
+
+[`verify_live.py`](../examples/csp2-live/tools/verify_live.py) checks this MDB against frames built by libcsp. For every `mdb_*` vector it sends the frame to Yamcs and compares the decoded parameters with values taken from the vector bytes. It also checks that parameters not carried by the frame stay untouched, that a frame for another node is dropped, and that a frame with a wrong CRC is not decoded.
+
 ## Command configuration
 
 ```yaml
@@ -128,7 +143,8 @@ Vectors cover:
 - all priorities and flag combinations;
 - empty and maximum payloads;
 - both CRC modes;
-- corrupted CRC, missing trailer and short frame.
+- corrupted CRC, missing trailer and short frame;
+- frames for the MDB example (`mdb_*`): fixed-layout housekeeping with and without CRC, payloads of any length from empty to maximum, and an unknown port.
 
 Scheduled CI rebuilds libcsp in Docker and compares generated files byte-for-byte. [ADR 0004](adr/0004-reference-vectors.md) explains why this is separate from Java implementation.
 

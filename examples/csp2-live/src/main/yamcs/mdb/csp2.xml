@@ -1,9 +1,26 @@
 <?xml version="1.0" encoding="UTF-8"?>
+<!--
+  Example Mission Database for CSP 2.x telemetry.
+
+  CspPacketPreprocessor leaves frame bytes unchanged, so this file does all decoding:
+
+  - CspPacket decodes the 6-byte header and splits the flags into single bits;
+  - child containers are chosen by destination port, the usual way CSP frames are told apart;
+  - a container below Housekeeping is chosen by the CRC32 flag, because the 4-byte CRC trailer exists only when the
+    flag is set;
+  - frames with an unknown port still produce header parameters.
+
+  Ports in this example: 10 = three fixed bytes, 11 = housekeeping, 12 = raw bytes of any length.
+-->
 <SpaceSystem name="CSP2">
   <Header validationStatus="Unknown" version="0.1.0" date="2026-10-23T00:00:00Z"/>
 
   <TelemetryMetaData>
     <ParameterTypeSet>
+      <!-- CSP header fields: always big-endian, bit widths from the CSP 2.x header layout -->
+      <IntegerParameterType name="uint1" signed="false">
+        <IntegerDataEncoding encoding="unsigned" sizeInBits="1"/>
+      </IntegerParameterType>
       <IntegerParameterType name="uint2" signed="false">
         <IntegerDataEncoding encoding="unsigned" sizeInBits="2"/>
       </IntegerParameterType>
@@ -16,6 +33,46 @@
       <IntegerParameterType name="uint14" signed="false">
         <IntegerDataEncoding encoding="unsigned" sizeInBits="14"/>
       </IntegerParameterType>
+
+      <!--
+        Payload byte order belongs to the application, not to CSP. Housekeeping below is little-endian, as a C struct
+        copied from a little-endian CPU would be. Big-endian is the default when byteOrder is omitted.
+      -->
+      <IntegerParameterType name="uint16le" signed="false">
+        <IntegerDataEncoding encoding="unsigned" sizeInBits="16" byteOrder="leastSignificantByteFirst"/>
+      </IntegerParameterType>
+      <IntegerParameterType name="int16le" signed="true">
+        <IntegerDataEncoding encoding="twosComplement" sizeInBits="16" byteOrder="leastSignificantByteFirst"/>
+      </IntegerParameterType>
+      <IntegerParameterType name="uint32le" signed="false">
+        <IntegerDataEncoding encoding="unsigned" sizeInBits="32" byteOrder="leastSignificantByteFirst"/>
+      </IntegerParameterType>
+      <FloatParameterType name="float32le" sizeInBits="32">
+        <FloatDataEncoding encoding="IEEE754_1985" sizeInBits="32" byteOrder="leastSignificantByteFirst"/>
+      </FloatParameterType>
+
+      <!-- CRC trailer is always big-endian on the wire (libcsp stores it with htobe32) -->
+      <IntegerParameterType name="uint32be" signed="false">
+        <IntegerDataEncoding encoding="unsigned" sizeInBits="32"/>
+      </IntegerParameterType>
+
+      <!--
+        CSP has no length field, so a payload of any length runs to the end of the frame. Yamcs ships a decoder for
+        this case. The value includes the CRC trailer when the CRC32 flag is set: XTCE position "from container end"
+        is not supported by Yamcs, so the trailer cannot be left out.
+      -->
+      <BinaryParameterType name="rest_of_frame">
+        <BinaryDataEncoding>
+          <SizeInBits>
+            <DynamicValue>
+              <ParameterInstanceRef parameterRef="_yamcs_ignore"/>
+            </DynamicValue>
+          </SizeInBits>
+          <FromBinaryTransformAlgorithm name="RemainingBinaryDecoder">
+            <AlgorithmText language="java">org.yamcs.algo.RemainingBinaryDecoder</AlgorithmText>
+          </FromBinaryTransformAlgorithm>
+        </BinaryDataEncoding>
+      </BinaryParameterType>
     </ParameterTypeSet>
 
     <ParameterSet>
@@ -25,9 +82,22 @@
       <Parameter name="destination_port" parameterTypeRef="uint6"/>
       <Parameter name="source_port" parameterTypeRef="uint6"/>
       <Parameter name="flags" parameterTypeRef="uint6"/>
+      <Parameter name="flag_crc32" parameterTypeRef="uint1"/>
+      <Parameter name="flag_rdp" parameterTypeRef="uint1"/>
+      <Parameter name="flag_hmac" parameterTypeRef="uint1"/>
+      <Parameter name="flag_frag" parameterTypeRef="uint1"/>
+
       <Parameter name="payload_0" parameterTypeRef="uint8"/>
       <Parameter name="payload_1" parameterTypeRef="uint8"/>
       <Parameter name="payload_2" parameterTypeRef="uint8"/>
+
+      <Parameter name="hk_counter" parameterTypeRef="uint16le"/>
+      <Parameter name="hk_temperature" parameterTypeRef="int16le"/>
+      <Parameter name="hk_uptime" parameterTypeRef="uint32le"/>
+      <Parameter name="hk_voltage" parameterTypeRef="float32le"/>
+      <Parameter name="hk_crc32" parameterTypeRef="uint32be"/>
+
+      <Parameter name="raw_data" parameterTypeRef="rest_of_frame"/>
     </ParameterSet>
 
     <ContainerSet>
@@ -39,10 +109,96 @@
           <ParameterRefEntry parameterRef="destination_port"/>
           <ParameterRefEntry parameterRef="source_port"/>
           <ParameterRefEntry parameterRef="flags"/>
-          <ParameterRefEntry parameterRef="payload_0"/>
+          <!--
+            Flags are the last 6 bits of the header: frame bits 42..47, numbered from the most significant bit of the
+            first byte. Each flag is read again from its own bit, so a criteria can test it without a mask.
+          -->
+          <ParameterRefEntry parameterRef="flag_crc32">
+            <LocationInContainerInBits referenceLocation="containerStart">
+              <FixedValue>47</FixedValue>
+            </LocationInContainerInBits>
+          </ParameterRefEntry>
+          <ParameterRefEntry parameterRef="flag_rdp">
+            <LocationInContainerInBits referenceLocation="containerStart">
+              <FixedValue>46</FixedValue>
+            </LocationInContainerInBits>
+          </ParameterRefEntry>
+          <ParameterRefEntry parameterRef="flag_hmac">
+            <LocationInContainerInBits referenceLocation="containerStart">
+              <FixedValue>44</FixedValue>
+            </LocationInContainerInBits>
+          </ParameterRefEntry>
+          <ParameterRefEntry parameterRef="flag_frag">
+            <LocationInContainerInBits referenceLocation="containerStart">
+              <FixedValue>43</FixedValue>
+            </LocationInContainerInBits>
+          </ParameterRefEntry>
+        </EntryList>
+      </SequenceContainer>
+
+      <!-- Port 10: three fixed bytes (the real libcsp node in the interop test sends this) -->
+      <SequenceContainer name="Sample">
+        <EntryList>
+          <ParameterRefEntry parameterRef="payload_0">
+            <LocationInContainerInBits referenceLocation="containerStart">
+              <FixedValue>48</FixedValue>
+            </LocationInContainerInBits>
+          </ParameterRefEntry>
           <ParameterRefEntry parameterRef="payload_1"/>
           <ParameterRefEntry parameterRef="payload_2"/>
         </EntryList>
+        <BaseContainer containerRef="CspPacket">
+          <RestrictionCriteria>
+            <Comparison parameterRef="destination_port" value="10"/>
+          </RestrictionCriteria>
+        </BaseContainer>
+      </SequenceContainer>
+
+      <!-- Port 11: fixed-layout housekeeping, 12 payload bytes -->
+      <SequenceContainer name="Housekeeping">
+        <EntryList>
+          <ParameterRefEntry parameterRef="hk_counter">
+            <LocationInContainerInBits referenceLocation="containerStart">
+              <FixedValue>48</FixedValue>
+            </LocationInContainerInBits>
+          </ParameterRefEntry>
+          <ParameterRefEntry parameterRef="hk_temperature"/>
+          <ParameterRefEntry parameterRef="hk_uptime"/>
+          <ParameterRefEntry parameterRef="hk_voltage"/>
+        </EntryList>
+        <BaseContainer containerRef="CspPacket">
+          <RestrictionCriteria>
+            <Comparison parameterRef="destination_port" value="11"/>
+          </RestrictionCriteria>
+        </BaseContainer>
+      </SequenceContainer>
+
+      <!-- Same frame with the CRC32 flag set: the 4-byte trailer follows the fixed payload -->
+      <SequenceContainer name="HousekeepingWithCrc">
+        <EntryList>
+          <ParameterRefEntry parameterRef="hk_crc32"/>
+        </EntryList>
+        <BaseContainer containerRef="Housekeeping">
+          <RestrictionCriteria>
+            <Comparison parameterRef="flag_crc32" value="1"/>
+          </RestrictionCriteria>
+        </BaseContainer>
+      </SequenceContainer>
+
+      <!-- Port 12: payload of any length, including none -->
+      <SequenceContainer name="RawData">
+        <EntryList>
+          <ParameterRefEntry parameterRef="raw_data">
+            <LocationInContainerInBits referenceLocation="containerStart">
+              <FixedValue>48</FixedValue>
+            </LocationInContainerInBits>
+          </ParameterRefEntry>
+        </EntryList>
+        <BaseContainer containerRef="CspPacket">
+          <RestrictionCriteria>
+            <Comparison parameterRef="destination_port" value="12"/>
+          </RestrictionCriteria>
+        </BaseContainer>
       </SequenceContainer>
     </ContainerSet>
   </TelemetryMetaData>
