@@ -28,6 +28,9 @@ dataLinks:
     packetPreprocessorArgs:
       cspId: 1
       crcMode: both
+    # A frame with a wrong CRC must not reach the MDB, so decoded telemetry also proves its CRC was accepted
+    invalidPackets: DIVERT
+    invalidPacketsStream: invalid_tm
 
   - name: csp2_tc_data
     class: org.yamcs.tctm.UdpTcDataLink

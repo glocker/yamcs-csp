@@ -12,7 +12,8 @@
  *   name,crc_mode,priority,destination,source,destination_port,source_port,flags,payload_hex,frame_hex,expected
  * payload_hex is application payload before CRC is added ("-" if empty). frame_hex is exact frame byte sequence.
  * Payload is ramp 01 02 03 ... unless a case gives explicit bytes. Cases named mdb_* feed MDB example in
- * examples/csp2-live: destination 1 (Yamcs), source 228 (libcsp node) and ports 10, 11, 12 as defined there.
+ * examples/csp2-live: telemetry has destination 1 (Yamcs) and source 228 (libcsp node), ports 10, 11, 12 as defined
+ * there; mdb_cmd_* are commands in the opposite direction.
  * expected is libcsp verdict (csp_crc32_verify), or "too_short" for frame shorter than 6-byte header.
  */
 
@@ -61,6 +62,9 @@ static const uint8_t hk_extreme[] = {0xFF, 0xFF, 0x00, 0x80, 0xFF, 0xFF, 0xFF, 0
 
 #define HK_LENGTH ((uint16_t)sizeof(hk_typical))
 
+/* Application command used by the MDB example (port 10): uint8 opcode 42, then uint16 value 0x1234, little-endian */
+static const uint8_t app_command[] = {0x2A, 0x34, 0x12};
+
 static const struct vector_case cases[] = {
     /* name, priority, destination, source, destination port, source port, flags, payload length, kind, payload */
     {"no_flags", 1, 5, 3, 10, 20, 0, 3, KIND_NORMAL},
@@ -101,6 +105,9 @@ static const struct vector_case cases[] = {
     {"mdb_raw_max_crc", 1, 1, 228, 12, 7, CSP_FCRC32, CSP_BUFFER_SIZE - 4, KIND_NORMAL},
     {"mdb_unknown_port", 1, 1, 228, 50, 7, 0, 3, KIND_NORMAL},
     {"mdb_unknown_port_all_flags", 1, 1, 228, 50, 7, FLAGS_ALL_DEFINED, 3, KIND_NORMAL},
+    /* MDB example commands, sent by Yamcs (source 1) to a libcsp node (destination 228); port 1 is CSP_PING */
+    {"mdb_cmd_app", 2, 228, 1, 10, 5, CSP_FCRC32, sizeof(app_command), KIND_NORMAL, app_command},
+    {"mdb_cmd_ping", 2, 228, 1, CSP_PING, 5, CSP_FCRC32, 8, KIND_NORMAL},
 };
 
 static void die(const char *message) {

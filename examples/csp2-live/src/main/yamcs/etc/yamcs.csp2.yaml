@@ -3,6 +3,16 @@ services:
     args:
       name: realtime
       type: realtime
+  # Two processors, because libcsp transmit CRC coverage is fixed at build time: each processor releases commands to
+  # its own TC link and postprocessor
+  - class: org.yamcs.ProcessorCreatorService
+    args:
+      name: data
+      type: data
+  - class: org.yamcs.ProcessorCreatorService
+    args:
+      name: header_data
+      type: header_data
   - class: org.yamcs.archive.CommandHistoryRecorder
   - class: org.yamcs.archive.EventRecorder
 
@@ -23,15 +33,26 @@ dataLinks:
     invalidPackets: DIVERT
     invalidPacketsStream: invalid_tm
 
-  - name: csp2_tc
+  # libcsp frame is at most 262 bytes: 6-byte header and 256-byte packet buffer, which includes the CRC trailer
+  - name: csp2_tc_data
     class: org.yamcs.tctm.UdpTcDataLink
-    stream: tc_realtime
+    stream: tc_data
     host: localhost
     port: 10025
     commandPostprocessorClassName: io.github.glocker.yamcscsp.csp2.CspCommandPostprocessor
     commandPostprocessorArgs:
       crcMode: data
-      maximumTcPacketLength: 256
+      maximumTcPacketLength: 262
+
+  - name: csp2_tc_header_data
+    class: org.yamcs.tctm.UdpTcDataLink
+    stream: tc_header_data
+    host: localhost
+    port: 10026
+    commandPostprocessorClassName: io.github.glocker.yamcscsp.csp2.CspCommandPostprocessor
+    commandPostprocessorArgs:
+      crcMode: header_data
+      maximumTcPacketLength: 262
 
 streamConfig:
   tm:
@@ -41,6 +62,8 @@ streamConfig:
   invalidTm: invalid_tm
   tc:
     - tc_realtime
+    - tc_data
+    - tc_header_data
   cmdHist:
     - cmdhist_realtime
     - cmdhist_dump

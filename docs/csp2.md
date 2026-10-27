@@ -119,7 +119,7 @@ The example sets `invalidPackets: DIVERT` on the TM link, so a frame with a wron
 commandPostprocessorClassName: io.github.glocker.yamcscsp.csp2.CspCommandPostprocessor
 commandPostprocessorArgs:
   crcMode: data
-  maximumTcPacketLength: 256
+  maximumTcPacketLength: 262
 ```
 
 | Option                  | Type    | Default | Meaning |
@@ -133,6 +133,23 @@ This follows existing Yamcs CSP 1.x behavior and avoids two owners for same head
 
 Commands shorter than header or longer than configured final limit are not sent. Command history receives `Acknowledge_Sent = NOK` and `CommandComplete = NOK`.
 
+A libcsp frame with the default packet buffer is at most 262 bytes: 6 header bytes and 256 bytes of payload, CRC trailer included. The example uses that value as the limit.
+
+## Building commands in the MDB
+
+Because the MDB owns the header, a command is the header fields plus the payload. The commands in [`csp2.xml`](../examples/csp2-live/src/main/yamcs/mdb/csp2.xml) use these techniques:
+
+- **Shared header.** An abstract command `CspCommand` has one argument for each header field, with the bit widths of the CSP 2.x header. Every other command inherits it with `BaseMetaCommand`, so the six header arguments are written once.
+- **Defaults.** `priority` (2), `source` (1), `source_port` (7) and `flags` (1, CRC32 only) have initial values, so an operator gives only what changes. With `flags` 1 the postprocessor appends the CRC trailer.
+- **Fixed port.** `Ping` and `AppCommand` set `destination_port` with `ArgumentAssignment`, so the operator cannot send them to another port by mistake. Port 1 is `CSP_PING` in libcsp, a node answers it with the same payload. `SendRaw` leaves the port free.
+- **Payload of any length.** A binary argument type with no `SizeInBits` takes every byte the operator gives, including none. In the HTTP API the value is a hex string.
+- **Payload fields.** `AppCommand` has two arguments, `opcode` and `value`, encoded after the header (the 16-bit value is little-endian, as in the housekeeping telemetry).
+- **Range checks.** `ValidRange` on each header argument type makes Yamcs refuse an address above 16383, a port above 63 and so on with HTTP 400 before the postprocessor sees the command. The postprocessor only checks the final length.
+
+CRC coverage belongs to the postprocessor, not to the command. A libcsp node checks the mode it was built with, so each mode needs its own TC link and postprocessor. The example has two processors, `data` and `header_data`, and releases the same commands through whichever matches the node.
+
+[`verify_live.py`](../examples/csp2-live/tools/verify_live.py) checks these commands against libcsp. For each valid frame in both vector files it issues `SendRaw` with the fields of the vector and compares the datagram on the TC link byte for byte with the libcsp frame. `AppCommand` and `Ping` are compared with their own vectors (`mdb_cmd_app`, `mdb_cmd_ping`). It also checks that out-of-range arguments are refused, and that a frame one byte over the length limit is not sent and is marked `NOK` in command history.
+
 ## How compatibility is checked
 
 Java tests do not calculate their own expected frames. A C generator links against pinned libcsp and produces complete UDP frames from two builds: default and `CSP_21`.
@@ -144,7 +161,7 @@ Vectors cover:
 - empty and maximum payloads;
 - both CRC modes;
 - corrupted CRC, missing trailer and short frame;
-- frames for the MDB example (`mdb_*`): fixed-layout housekeeping with and without CRC, payloads of any length from empty to maximum, and an unknown port.
+- frames for the MDB example (`mdb_*`): fixed-layout housekeeping with and without CRC, payloads of any length from empty to maximum, an unknown port, and two commands from Yamcs to a node (`mdb_cmd_app`, `mdb_cmd_ping`).
 
 Scheduled CI rebuilds libcsp in Docker and compares generated files byte-for-byte. [ADR 0004](adr/0004-reference-vectors.md) explains why this is separate from Java implementation.
 
@@ -152,6 +169,7 @@ Stored vectors are not only evidence. Live example starts Yamcs and real libcsp 
 
 - libcsp telemetry is accepted by Yamcs;
 - Yamcs command is accepted by libcsp;
+- a Yamcs `Ping` is echoed by the libcsp service handler and decoded by the MDB;
 - exchange passes in both CRC modes.
 
 ## Supported scope

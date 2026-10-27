@@ -18,7 +18,6 @@ from yamcs_runtime import start_yamcs, stop_process
 ROOT = Path(__file__).resolve().parents[1]
 LOG = ROOT / "target" / "live-verification.log"
 BASE_URL = "http://localhost:8090"
-EXPECTED_COMMAND = bytes.fromhex("BFFF0007F141010203F130F21E")
 STARTUP_TIMEOUT = int(os.environ.get("YAMCS_STARTUP_TIMEOUT", "90"))
 
 # Telemetry frames come from the libcsp reference vectors used by the Java tests
@@ -27,8 +26,15 @@ VECTOR_FILES = ("vectors-data.csv", "vectors-header_data.csv")
 VECTOR_COLUMNS = ("name", "crc_mode", "priority", "destination", "source", "destination_port", "source_port",
                   "flags", "payload_hex", "frame_hex", "expected")
 TM_ADDRESS = ("127.0.0.1", 10015)
+# libcsp transmit CRC coverage is fixed at build time, so Yamcs has one processor and TC link per mode
+COMMAND_VARIANTS = (
+    ("vectors-data.csv", "data", 10025),
+    ("vectors-header_data.csv", "header_data", 10026),
+)
+MAXIMUM_FRAME_PAYLOAD = 256  # libcsp packet buffer, CRC trailer included; the TC links allow 6 more bytes of header
 CSP_HEADER_SIZE = 6
-# Vector names. Everything named mdb_* is meant for this example; the others are reused from the codec vectors.
+# Vector names. Everything named mdb_* is meant for this example (mdb_cmd_* are commands, the rest telemetry); the
+# others are reused from the codec vectors.
 HEADER_ONLY_VECTOR = "crc_mixed_fields"  # destination 16383, port 63: no container for this port
 FOREIGN_ADDRESS_VECTOR = "crc"  # destination 5, not in cspId of the TM link
 CORRUPTED_VECTOR = "mdb_hk_crc_corrupted"
@@ -56,7 +62,7 @@ def wait_for_server(process, timeout=STARTUP_TIMEOUT):
             raise RuntimeError(f"Yamcs exited during startup with code {returncode}")
         try:
             links = request_json("/api/links/csp2")
-            if len(links.get("links", [])) == 2:
+            if len(links.get("links", [])) == 3:
                 return
         except (HTTPError, URLError, TimeoutError, json.JSONDecodeError):
             pass
@@ -196,7 +202,8 @@ def verify_telemetry():
     with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as udp:
         for file_name in VECTOR_FILES:
             vectors = load_vectors(file_name)
-            names = [name for name in vectors if name.startswith("mdb_") and name != CORRUPTED_VECTOR]
+            names = [name for name in vectors
+                     if name.startswith("mdb_") and not name.startswith("mdb_cmd_") and name != CORRUPTED_VECTOR]
             for name in names + [HEADER_ONLY_VECTOR]:
                 verify_decoded(udp, file_name, vectors[name])
                 decoded += 1
@@ -206,18 +213,128 @@ def verify_telemetry():
     return decoded
 
 
+def issue_command(processor, name, args, sequence_number):
+    return request_json(
+        f"/api/processors/csp2/{processor}/commands/CSP2/{name}",
+        method="POST",
+        body={"args": args, "sequenceNumber": sequence_number},
+    )
+
+
+def receive_frame(listener, timeout):
+    """Next datagram released by a TC link, or None if nothing arrives in time."""
+    listener.settimeout(timeout)
+    try:
+        return listener.recvfrom(2048)[0]
+    except socket.timeout:
+        return None
+
+
+def raw_arguments(row):
+    """SendRaw arguments that make Yamcs build the frame of a vector row."""
+    return {
+        "priority": int(row["priority"]),
+        "destination": int(row["destination"]),
+        "source": int(row["source"]),
+        "destination_port": int(row["destination_port"]),
+        "source_port": int(row["source_port"]),
+        "flags": int(row["flags"]),
+        "payload": "" if row["payload_hex"] == "-" else row["payload_hex"],
+    }
+
+
+def verify_sent(listener, processor, command, args, row, sequence_number):
+    issue_command(processor, command, args, sequence_number)
+    frame = receive_frame(listener, 5)
+    expected = bytes.fromhex(row["frame_hex"])
+    if frame != expected:
+        got = "nothing" if frame is None else frame.hex().upper()
+        raise AssertionError(f"{processor} {command} for {row['name']}: got {got}, expected {expected.hex().upper()}")
+
+
+def verify_commands(listeners, sequence):
+    """Every valid libcsp vector is rebuilt by Yamcs from command arguments, with the CRC mode of its processor."""
+    sent = 0
+    for file_name, processor, port in COMMAND_VARIANTS:
+        for row in load_vectors(file_name).values():
+            if row["expected"] != "valid":
+                continue
+            verify_sent(listeners[port], processor, "SendRaw", raw_arguments(row), row, next(sequence))
+            sent += 1
+            # Commands that fix the port, with the other header arguments left at their defaults where possible
+            if row["name"] == "mdb_cmd_app":
+                args = {"destination": 228, "source_port": 5, "opcode": 0x2A, "value": 0x1234}
+                verify_sent(listeners[port], processor, "AppCommand", args, row, next(sequence))
+                sent += 1
+            elif row["name"] == "mdb_cmd_ping":
+                args = {"destination": 228, "source_port": 5, "payload": row["payload_hex"]}
+                verify_sent(listeners[port], processor, "Ping", args, row, next(sequence))
+                sent += 1
+    return sent
+
+
+def verify_rejected_arguments(listener, sequence):
+    """Yamcs refuses header values that do not fit their bits, so nothing reaches the TC link."""
+    rejected = 0
+    for argument, value in (("destination", 16384), ("source", 16384), ("destination_port", 64),
+                            ("source_port", 64), ("priority", 4), ("flags", 64)):
+        args = {"destination": 1, "destination_port": 1, "payload": "01", argument: value}
+        try:
+            issue_command("data", "SendRaw", args, next(sequence))
+        except HTTPError as error:
+            body = error.read().decode("utf-8", errors="replace")
+            if error.code != 400 or "not in the range" not in body:
+                raise AssertionError(f"{argument}={value} rejected with {error.code}: {body}")
+        else:
+            raise AssertionError(f"{argument}={value} was accepted")
+        if receive_frame(listener, 0.3) is not None:
+            raise AssertionError(f"{argument}={value} was refused, but a frame was sent")
+        rejected += 1
+    return rejected
+
+
+def command_history_status(sequence_number, key, timeout=5):
+    deadline = time.monotonic() + timeout
+    while time.monotonic() < deadline:
+        for entry in request_json("/api/archive/csp2/commands?limit=500").get("entry", []):
+            if entry.get("sequenceNumber") == sequence_number:
+                for attribute in entry.get("attr", []):
+                    if attribute["name"] == key:
+                        return attribute["value"].get("stringValue")
+        time.sleep(0.1)
+    return None
+
+
+def verify_too_long(listener, sequence):
+    """Postprocessor limit counts the whole frame: 6-byte header, payload and CRC trailer."""
+    too_long = (
+        ("without CRC", 0, MAXIMUM_FRAME_PAYLOAD + 1),
+        ("with CRC", 1, MAXIMUM_FRAME_PAYLOAD - 3),
+    )
+    for label, flags, payload_length in too_long:
+        sequence_number = next(sequence)
+        args = {"destination": 1, "destination_port": 1, "flags": flags, "payload": "00" * payload_length}
+        issue_command("data", "SendRaw", args, sequence_number)
+        if receive_frame(listener, 1) is not None:
+            raise AssertionError(f"Command {label} with {payload_length} payload bytes wasn't refused")
+        for key in ("Acknowledge_Sent_Status", "CommandComplete_Status"):
+            status = command_history_status(sequence_number, key)
+            if status != "NOK":
+                raise AssertionError(f"Command {label} is too long, but {key} in command history is {status}")
+    return len(too_long)
+
+
 def verify_command():
-    with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as listener:
-        listener.bind(("127.0.0.1", 10025))
-        listener.settimeout(5)
-        request_json(
-            "/api/processors/csp2/realtime/commands/CSP2/SendReferencePacket",
-            method="POST",
-            body={"origin": "csp2-live", "sequenceNumber": 1},
-        )
-        command, _ = listener.recvfrom(1024)
-    if command != EXPECTED_COMMAND:
-        raise AssertionError(f"Command {command.hex().upper()} != {EXPECTED_COMMAND.hex().upper()}")
+    sequence = iter(range(1, 100000))
+    with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as data_listener, \
+            socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as header_data_listener:
+        listeners = {10025: data_listener, 10026: header_data_listener}
+        for port, listener in listeners.items():
+            listener.bind(("127.0.0.1", port))
+        sent = verify_commands(listeners, sequence)
+        rejected = verify_rejected_arguments(data_listener, sequence)
+        rejected += verify_too_long(data_listener, sequence)
+    return sent, rejected
 
 
 def main():
@@ -227,10 +344,11 @@ def main():
         try:
             wait_for_server(process)
             decoded = verify_telemetry()
-            verify_command()
+            sent, rejected = verify_command()
             print("LIVE VERIFICATION PASSED")
             print(f"TM frames decoded as expected: {decoded}")
-            print(f"TC frame: {EXPECTED_COMMAND.hex().upper()}")
+            print(f"TC frames equal to libcsp frames: {sent}")
+            print(f"TC commands refused: {rejected}")
             print(f"Log: {LOG}")
         finally:
             stop_process(process)

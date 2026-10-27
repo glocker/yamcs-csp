@@ -1,6 +1,7 @@
 
 """Verify live UDP interoperability between Yamcs and pinned libcsp 2.1"""
 
+import base64
 import json
 import os
 import subprocess
@@ -20,6 +21,9 @@ BUILD_LOG = TARGET / "interop-docker-build.log"
 BASE_URL = "http://localhost:8090"
 LIBCSP_COMMIT = "48f7fb0b57f610bf65bab1aa2d1357c3b9722782"
 INTEROP_NODE_ADDRESS = 228
+CSP_PING_PORT = 1
+PING_REPLY_PORT = 12  # the MDB decodes port 12 as raw bytes of any length
+PING_PAYLOAD = bytes(range(1, 9))
 STARTUP_TIMEOUT = int(os.environ.get("YAMCS_STARTUP_TIMEOUT", "90"))
 # libcsp selects transmit CRC coverage at compile time, so each mode needs its own image and Yamcs processor
 VARIANTS = (
@@ -108,6 +112,37 @@ def assert_parameter(name, expected):
         raise AssertionError(f"Parameter {name} is {actual}, expected {expected}")
 
 
+def get_binary_parameter(name):
+    response = request_json(f"/api/processors/interop/realtime/parameters/CSP2/{name}")
+    value = response.get("engValue")
+    return None if value is None else base64.b64decode(value["binaryValue"])
+
+
+def verify_ping(mode, processor, sequence_number):
+    """Yamcs pings the libcsp node; the node echoes the packet and Yamcs decodes the echo with the MDB."""
+    previous_count = get_tm_count()
+    request_json(
+        f"/api/processors/interop/{processor}/commands/CSP2/Ping",
+        method="POST",
+        body={
+            "origin": "libcsp-interop",
+            "sequenceNumber": sequence_number,
+            "args": {"destination": INTEROP_NODE_ADDRESS, "source_port": PING_REPLY_PORT, "payload": PING_PAYLOAD.hex()},
+        },
+    )
+    wait_for_tm_count(previous_count)
+    # Reply to a ping is addressed to the source port of the request and comes from the ping port
+    assert_parameter("destination", 1)
+    assert_parameter("source", INTEROP_NODE_ADDRESS)
+    assert_parameter("destination_port", PING_REPLY_PORT)
+    assert_parameter("source_port", CSP_PING_PORT)
+    assert_parameter("flag_crc32", 1)
+    # Raw payload of the reply: echoed bytes, then the CRC trailer added by libcsp
+    raw = get_binary_parameter("raw_data")
+    if raw is None or len(raw) != len(PING_PAYLOAD) + 4 or raw[:len(PING_PAYLOAD)] != PING_PAYLOAD:
+        raise AssertionError(f"Ping echo is {None if raw is None else raw.hex()}, expected {PING_PAYLOAD.hex()} and CRC")
+
+
 def image_name(mode):
     return f"yamcs-csp-libcsp-{mode}:48f7fb0"
 
@@ -159,6 +194,8 @@ def verify_variant(mode, host_port, processor, sequence_number):
         )
         # Link counter proves Yamcs transmitted; node output below proves libcsp accepted CRC and payload
         wait_for_tc_count(mode, previous_tc_count)
+
+        verify_ping(mode, processor, sequence_number + 100)
         output, _ = container.communicate(timeout=20)
     except Exception:
         container.terminate()
@@ -176,7 +213,10 @@ def verify_variant(mode, host_port, processor, sequence_number):
         raise AssertionError(f"libcsp {mode} node didn't confirm telemetry:\n{output}")
     if f"COMMAND_RECEIVED crc_mode={mode}" not in output:
         raise AssertionError(f"libcsp {mode} node didn't accept Yamcs command:\n{output}")
-    print(f"{mode}: libcsp telemetry accepted by Yamcs; Yamcs command accepted by libcsp")
+    if f"PING_ECHOED crc_mode={mode}" not in output:
+        raise AssertionError(f"libcsp {mode} node didn't accept Yamcs ping:\n{output}")
+    print(f"{mode}: libcsp telemetry accepted by Yamcs; Yamcs command accepted by libcsp; "
+          "Yamcs ping echoed by libcsp and decoded")
 
 
 def main():

@@ -17,6 +17,7 @@
 #define COMMAND_PORT 10
 
 static const uint8_t payload[] = {1, 2, 3};
+static const uint8_t ping_payload[] = {1, 2, 3, 4, 5, 6, 7, 8};
 
 static const char *resolve_ipv4(const char *hostname, char *buffer, size_t size) {
     struct addrinfo hints = {0};
@@ -128,5 +129,32 @@ int main(int argc, char **argv) {
 
     csp_buffer_free(command);
     csp_close(command_connection);
+
+    // Yamcs now pings this node. libcsp service handler answers CSP_PING by sending the same packet back
+    csp_conn_t *ping_connection = csp_accept(&socket, 15000);
+    if (ping_connection == NULL) {
+        fail("timed out waiting for Yamcs ping");
+    }
+    csp_packet_t *ping = csp_read(ping_connection, 1000);
+    if (ping == NULL) {
+        fail("ping connection contained no packet");
+    }
+    if (csp_conn_dport(ping_connection) != CSP_PING) {
+        fail("ping arrived on unexpected CSP port");
+    }
+    if (ping->length != sizeof(ping_payload) || memcmp(ping->data, ping_payload, sizeof(ping_payload)) != 0) {
+        fail("ping payload didn't match 0102030405060708");
+    }
+
+    printf("PING_ECHOED crc_mode=%s destination=%u source=%u payload=0102030405060708\n",
+            crc_mode, ping->id.dst, ping->id.src);
+    fflush(stdout);
+
+    // Handler takes the packet and sends it back to its source with the same flags
+    csp_service_handler(ping);
+    csp_close(ping_connection);
+
+    // Reply leaves through UDP interface in this thread; wait a moment so the process doesn't exit under it
+    usleep(300000);
     return EXIT_SUCCESS;
 }

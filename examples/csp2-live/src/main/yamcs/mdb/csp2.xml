@@ -11,6 +11,9 @@
   - frames with an unknown port still produce header parameters.
 
   Ports in this example: 10 = three fixed bytes, 11 = housekeeping, 12 = raw bytes of any length.
+
+  Commands are described at the end of the file. CspCommandPostprocessor expects the complete CSP header from the MDB,
+  so every command inherits the header arguments from CspCommand and the postprocessor only adds the CRC trailer.
 -->
 <SpaceSystem name="CSP2">
   <Header validationStatus="Unknown" version="0.1.0" date="2026-10-23T00:00:00Z"/>
@@ -204,18 +207,133 @@
   </TelemetryMetaData>
 
   <CommandMetaData>
+    <ArgumentTypeSet>
+      <!--
+        Header arguments carry the same bit widths as the CSP 2.x header. Yamcs rejects a value outside the range
+        before the command reaches the postprocessor, which never changes header fields.
+      -->
+      <IntegerArgumentType name="csp_priority" signed="false" initialValue="2">
+        <IntegerDataEncoding encoding="unsigned" sizeInBits="2"/>
+        <ValidRangeSet>
+          <ValidRange minInclusive="0" maxInclusive="3"/>
+        </ValidRangeSet>
+      </IntegerArgumentType>
+      <IntegerArgumentType name="csp_address" signed="false">
+        <IntegerDataEncoding encoding="unsigned" sizeInBits="14"/>
+        <ValidRangeSet>
+          <ValidRange minInclusive="0" maxInclusive="16383"/>
+        </ValidRangeSet>
+      </IntegerArgumentType>
+      <IntegerArgumentType name="csp_port" signed="false">
+        <IntegerDataEncoding encoding="unsigned" sizeInBits="6"/>
+        <ValidRangeSet>
+          <ValidRange minInclusive="0" maxInclusive="63"/>
+        </ValidRangeSet>
+      </IntegerArgumentType>
+      <!-- Default 1 sets only the CRC32 flag, so the postprocessor appends a CRC trailer -->
+      <IntegerArgumentType name="csp_flags" signed="false" initialValue="1">
+        <IntegerDataEncoding encoding="unsigned" sizeInBits="6"/>
+        <ValidRangeSet>
+          <ValidRange minInclusive="0" maxInclusive="63"/>
+        </ValidRangeSet>
+      </IntegerArgumentType>
+
+      <IntegerArgumentType name="uint8" signed="false">
+        <IntegerDataEncoding encoding="unsigned" sizeInBits="8"/>
+      </IntegerArgumentType>
+      <IntegerArgumentType name="uint16le" signed="false">
+        <IntegerDataEncoding encoding="unsigned" sizeInBits="16" byteOrder="leastSignificantByteFirst"/>
+      </IntegerArgumentType>
+
+      <!--
+        Payload of any length, including none. A binary encoding without SizeInBits takes all bytes given by the
+        operator; there is no length field in a CSP frame. In the HTTP API the value is a hex string.
+      -->
+      <BinaryArgumentType name="payload_bytes">
+        <BinaryDataEncoding/>
+      </BinaryArgumentType>
+    </ArgumentTypeSet>
+
     <MetaCommandSet>
-      <MetaCommand name="SendReferencePacket">
-        <CommandContainer name="SendReferencePacket">
+      <!-- Header shared by all commands. Abstract: it is never sent by itself. -->
+      <MetaCommand name="CspCommand" abstract="true">
+        <ArgumentList>
+          <Argument name="priority" argumentTypeRef="csp_priority"/>
+          <Argument name="destination" argumentTypeRef="csp_address"/>
+          <!-- Address of Yamcs, the same for all commands of a link -->
+          <Argument name="source" argumentTypeRef="csp_address" initialValue="1"/>
+          <Argument name="destination_port" argumentTypeRef="csp_port"/>
+          <Argument name="source_port" argumentTypeRef="csp_port" initialValue="7"/>
+          <Argument name="flags" argumentTypeRef="csp_flags"/>
+        </ArgumentList>
+        <CommandContainer name="CspCommand">
           <EntryList>
-            <FixedValueEntry name="csp_header_and_payload" binaryValue="BFFF0007F141010203" sizeInBits="72"/>
+            <ArgumentRefEntry argumentRef="priority"/>
+            <ArgumentRefEntry argumentRef="destination"/>
+            <ArgumentRefEntry argumentRef="source"/>
+            <ArgumentRefEntry argumentRef="destination_port"/>
+            <ArgumentRefEntry argumentRef="source_port"/>
+            <ArgumentRefEntry argumentRef="flags"/>
           </EntryList>
         </CommandContainer>
       </MetaCommand>
+
+      <!-- Any destination, port and flags, with a payload of any length -->
+      <MetaCommand name="SendRaw">
+        <BaseMetaCommand metaCommandRef="CspCommand"/>
+        <ArgumentList>
+          <Argument name="payload" argumentTypeRef="payload_bytes"/>
+        </ArgumentList>
+        <CommandContainer name="SendRaw">
+          <EntryList>
+            <ArgumentRefEntry argumentRef="payload"/>
+          </EntryList>
+          <BaseContainer containerRef="CspCommand"/>
+        </CommandContainer>
+      </MetaCommand>
+
+      <!-- Port 1 is CSP_PING: a libcsp node answers with the same payload -->
+      <MetaCommand name="Ping">
+        <BaseMetaCommand metaCommandRef="CspCommand">
+          <ArgumentAssignmentList>
+            <ArgumentAssignment argumentName="destination_port" argumentValue="1"/>
+          </ArgumentAssignmentList>
+        </BaseMetaCommand>
+        <ArgumentList>
+          <Argument name="payload" argumentTypeRef="payload_bytes"/>
+        </ArgumentList>
+        <CommandContainer name="Ping">
+          <EntryList>
+            <ArgumentRefEntry argumentRef="payload"/>
+          </EntryList>
+          <BaseContainer containerRef="CspCommand"/>
+        </CommandContainer>
+      </MetaCommand>
+
+      <!-- Application command on port 10: the port is fixed by the command, the operator gives destination and fields -->
+      <MetaCommand name="AppCommand">
+        <BaseMetaCommand metaCommandRef="CspCommand">
+          <ArgumentAssignmentList>
+            <ArgumentAssignment argumentName="destination_port" argumentValue="10"/>
+          </ArgumentAssignmentList>
+        </BaseMetaCommand>
+        <ArgumentList>
+          <Argument name="opcode" argumentTypeRef="uint8"/>
+          <Argument name="value" argumentTypeRef="uint16le"/>
+        </ArgumentList>
+        <CommandContainer name="AppCommand">
+          <EntryList>
+            <ArgumentRefEntry argumentRef="opcode"/>
+            <ArgumentRefEntry argumentRef="value"/>
+          </EntryList>
+          <BaseContainer containerRef="CspCommand"/>
+        </CommandContainer>
+      </MetaCommand>
+
+      <!-- Fixed command used by the libcsp interop test: destination 228, port 10, CRC32 flag, payload 010203 -->
       <MetaCommand name="SendInteropPacket">
         <CommandContainer name="SendInteropPacket">
           <EntryList>
-            <!-- CSP destination 228, source 1, destination port 10, source port 5, CRC32 flag, payload 010203. -->
             <FixedValueEntry name="csp_header_and_payload" binaryValue="80E40004A141010203" sizeInBits="72"/>
           </EntryList>
         </CommandContainer>
