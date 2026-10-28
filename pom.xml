@@ -25,7 +25,7 @@
 	<properties>
 		<project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
 		<maven.compiler.release>17</maven.compiler.release>
-		<yamcs.version>5.13.6</yamcs.version>
+		<yamcs.version>5.13.7</yamcs.version>
 		<junit.version>5.10.5</junit.version>
 	</properties>
 

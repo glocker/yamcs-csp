@@ -1,6 +1,6 @@
 # CSP 2.x in Yamcs
 
-Yamcs 5.13 includes CSP support, but its packet classes use CSP 1.x layout: 4-byte header and 5-bit addresses. Feeding a CSP 2.x frame into that code would decode wrong fields before CRC is even checked.
+Yamcs 5.13.7 includes CSP support, but its packet classes use CSP 1.x layout: 4-byte header and 5-bit addresses. Feeding a CSP 2.x frame into that code would decode wrong fields before CRC is even checked.
 
 `csp2` module adds separate packet processors for CSP 2.x. It does not replace Yamcs transport links or turn Yamcs into a CSP router.
 
@@ -106,7 +106,7 @@ The preprocessor does not change accepted bytes, so the Mission Database decodes
 - **Layout by port.** CSP frames carry no type or length, so child containers are chosen by `destination_port` with `RestrictionCriteria`. The example has port 10 (three fixed bytes), 11 (housekeeping) and 12 (any length). A frame for any other port still produces the header parameters.
 - **Flags.** The flags field is read once as a number and again as single-bit parameters (`flag_crc32`, `flag_rdp`, `flag_hmac`, `flag_frag`). The flags are frame bits 42 to 47, counted from the most significant bit of the first byte, so CRC32 is bit 47. Single-bit parameters can be used in `RestrictionCriteria`, which cannot apply a mask to `flags`.
 - **CRC trailer.** The trailer exists only when the CRC32 flag is set. For a fixed layout, a container below `Housekeeping` is chosen by `flag_crc32` and adds the `hk_crc32` parameter after the payload. The plugin has already verified the value; the parameter only makes it visible.
-- **Payload of any length.** CSP has no length field, so the payload runs to the end of the frame. Yamcs provides `org.yamcs.algo.RemainingBinaryDecoder` for this. The decoded value includes the CRC trailer when the CRC32 flag is set, because Yamcs 5.13.6 does not support the XTCE position "from container end" (`XtceStaxReader` rejects it). Code that needs the payload alone must drop the last four bytes when `flag_crc32` is 1.
+- **Payload of any length.** CSP has no length field, so the payload runs to the end of the frame. Yamcs provides `org.yamcs.algo.RemainingBinaryDecoder` for this. The decoded value includes the CRC trailer when the CRC32 flag is set, because Yamcs 5.13.7 doesn't support the XTCE position "from container end" (`XtceStaxReader` rejects it). Code that needs payload alone must drop the last four bytes when `flag_crc32` is 1.
 - **Payload byte order.** CSP does not define it; each application decides. The example payloads are little-endian (`byteOrder="leastSignificantByteFirst"`), as a C struct copied from a little-endian CPU would be. Without `byteOrder`, Yamcs reads big-endian.
 
 The example sets `invalidPackets: DIVERT` on the TM link, so a frame with a wrong CRC goes to a separate stream and the MDB never decodes it.
@@ -176,7 +176,7 @@ Stored vectors are not only evidence. Live example starts Yamcs and real libcsp 
 
 Verified combination:
 
-- Yamcs 5.13.x;
+- Yamcs 5.13.7 (other versions haven't been tested);
 - libcsp 2.1 at pinned commit above;
 - CSP 2.x UDP frames;
 - CRC-32C in both libcsp modes.

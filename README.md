@@ -2,7 +2,7 @@
 
 CSP 2.x packet support for [Yamcs](https://yamcs.org).
 
-Yamcs 5.13 ships CSP packet processors for version 1.x. CSP 2.x changed header from 4 to 6 bytes and expanded node addresses to 14 bits, so existing processor cannot decode those packets. This project adds CSP 2.x support without requiring a Yamcs fork.
+Yamcs 5.13.7 ships CSP packet processors for version 1.x. CSP 2.x changed header from 4 to 6 bytes and expanded node addresses to 14 bits, so existing processor cannot decode those packets. This project adds CSP 2.x support without requiring a Yamcs fork.
 
 ## Current state
 
@@ -18,7 +18,7 @@ Both libcsp CRC variants are covered: payload only and header plus payload. Code
 
 ## Build
 
-Requires JDK 17+, Maven 3.9+ and Yamcs 5.13.x.
+Requires JDK 17+ and Maven 3.9+. The plugin is built and tested against Yamcs 5.13.7; other Yamcs versions have not been tested.
 
 ```sh
 mvn verify

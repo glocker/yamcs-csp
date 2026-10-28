@@ -1,6 +1,6 @@
 # CSP 2.x live Yamcs example
 
-Unit tests prove header and CRC bytes, but they do not prove that Yamcs can load plugin JAR, read YAML and MDB files, receive telemetry, or release a command. This example covers that gap with a real Yamcs 5.13.6 process.
+Unit tests prove header and CRC bytes, but they do not prove that Yamcs can load plugin JAR, read YAML and MDB files, receive telemetry, or release a command. This example covers that gap with a real Yamcs 5.13.7 process.
 
 It has two checks:
 

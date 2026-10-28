@@ -11,7 +11,7 @@
   <properties>
     <maven.compiler.release>17</maven.compiler.release>
     <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
-    <yamcs.version>5.13.6</yamcs.version>
+    <yamcs.version>5.13.7</yamcs.version>
   </properties>
 
   <dependencies>
