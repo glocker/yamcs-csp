@@ -86,7 +86,7 @@ packetPreprocessorArgs:
 
 `crcMode` does not require every packet to carry CRC. Packet without CRC32 flag skips verification.
 
-When flagged CRC fails, packet is marked invalid and warning event is emitted. Packet is still returned, so corrupted telemetry can be recorded and inspected. Frames shorter than 6-byte header and frames rejected by `cspId` are dropped.
+When flagged CRC fails, packet is marked invalid and warning event is emitted. Packet is still returned, so corrupted telemetry can be recorded and inspected. Frames shorter than the 6-byte header, frames with the CRC32 flag that are shorter than header plus 4-byte trailer (10 bytes), and frames rejected by `cspId` are dropped. The two short cases emit a `SHORT_PACKET` warning, as the CSP 1.x preprocessor in Yamcs 5.13.7 does.
 
 CSP header has no timestamp or packet counter. Preprocessor uses Yamcs reception time as generation time and assigns local 16-bit sequence count. Those values describe ingestion into Yamcs, not data sent by spacecraft.
 

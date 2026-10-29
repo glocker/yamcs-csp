@@ -8,6 +8,7 @@ import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.yamcs.utils.StringConverter.hexStringToArray;
 
+import java.util.Arrays;
 import java.util.List;
 import java.util.Map;
 
@@ -91,11 +92,13 @@ public class CspPacketPreprocessorTest {
     public void testReferenceVectors(String name, String crcMode, int priority, int destination, int source,
             int destinationPort, int sourcePort, int flags, String payloadHex, String frameHex, String expected) {
         var preprocessor = new CspPacketPreprocessor(YAMCS_INSTANCE);
-        var packet = new TmPacket(123456, hexStringToArray(frameHex));
+        byte[] frame = hexStringToArray(frameHex);
+        var packet = new TmPacket(123456, frame);
 
         TmPacket result = preprocessor.process(packet);
 
-        if (expected.equals("too_short")) {
+        boolean tooShortForCrc = (flags & CRC_FLAG) != 0 && frame.length < CspHeader.SIZE + CspCrc.SIZE;
+        if (expected.equals("too_short") || tooShortForCrc) {
             assertNull(result);
             return;
         }
@@ -120,9 +123,23 @@ public class CspPacketPreprocessorTest {
         assertTrue(headerDataPreprocessor.process(new TmPacket(1000, dataOnly)).isInvalid());
     }
 
+    @ParameterizedTest
+    @ValueSource(ints = { 6, 7, 8, 9 })
+    public void testCrcFlagWithFrameShorterThanTrailerIsDropped(int length) {
+        byte[] frame = Arrays.copyOf(CspHeader.of(1, 5, 3, 10, 20, CRC_FLAG).encode(), length);
+        var preprocessor = new CspPacketPreprocessor(YAMCS_INSTANCE);
+
+        assertNull(preprocessor.process(new TmPacket(1000, frame)));
+        assertEquals(1, EventProducerFactory.getMockupQueue().size());
+        assertEquals("SHORT_PACKET", EventProducerFactory.getMockupQueue().element().getType());
+    }
+
     @Test
-    public void testCrcFlagWithoutTrailerMarksPacketInvalid() {
-        byte[] frame = CspHeader.of(1, 5, 3, 10, 20, CRC_FLAG).encode();
+    public void testCrcFlagWithEmptyPayloadAndWrongTrailerMarksPacketInvalid() {
+        // Shortest frame that can hold a CRC trailer: header and four trailer bytes. CRC-32C of no data is zero, so
+        // the last trailer byte is changed to make the trailer wrong
+        byte[] frame = Arrays.copyOf(CspHeader.of(1, 5, 3, 10, 20, CRC_FLAG).encode(), CspHeader.SIZE + CspCrc.SIZE);
+        frame[frame.length - 1] = 0x01;
         var preprocessor = new CspPacketPreprocessor(YAMCS_INSTANCE);
 
         TmPacket result = preprocessor.process(new TmPacket(1000, frame));

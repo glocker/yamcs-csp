@@ -12,8 +12,9 @@ import org.yamcs.tctm.AbstractPacketPreprocessor;
 /**
  * Yamcs packet preprocessor for CSP 2.x telemetry.
  * <p>
- * Validates minimum header length, optionally filters destination addresses, verifies flagged CRC trailers, and supplies
- * Yamcs generation time and sequence count values absent from CSP header. Accepted frame bytes are not modified before
+ * Validates minimum header length (and header plus trailer length when the CRC32 flag is set), optionally filters
+ * destination addresses, verifies flagged CRC trailers, and supplies Yamcs generation time and sequence count values
+ * absent from CSP header. Accepted frame bytes are not modified before
  * Mission Database decoding.
  * <p>
  * Configuration keys: {@code cspId} (one address or address list) and {@code crcMode} ({@code both}, {@code data}, or
@@ -65,8 +66,9 @@ public class CspPacketPreprocessor extends AbstractPacketPreprocessor {
     /**
      * Processes one CSP 2.x frame.
      *
-     * @return original packet with Yamcs metadata, or {@code null} when too short or filtered by destination; CRC failure
-     *         marks returned packet invalid instead of dropping it
+     * @return original packet with Yamcs metadata, or {@code null} when too short (shorter than header, or than header
+     *         plus CRC trailer when the CRC32 flag is set) or filtered by destination; CRC failure marks returned packet
+     *         invalid instead of dropping it
      */
     @Override
     public TmPacket process(TmPacket packet) {
@@ -83,11 +85,19 @@ public class CspPacketPreprocessor extends AbstractPacketPreprocessor {
             return null;
         }
 
-        if (header.hasCrc() && !verifyCrc(bytes)) {
-            String message = "CRC verification failed for CSP 2.x packet";
-            log.warn(message);
-            eventProducer.sendWarning(ETYPE_CORRUPTED_PACKET, message);
-            packet.setInvalid();
+        if (header.hasCrc()) {
+            if (bytes.length < CspHeader.SIZE + CspCrc.SIZE) {
+                eventProducer.sendWarning("SHORT_PACKET",
+                        "Short CSP 2.x packet received, length: " + bytes.length + "; minimum required length is "
+                                + (CspHeader.SIZE + CspCrc.SIZE) + " bytes when the CRC flag is set");
+                return null;
+            }
+            if (!verifyCrc(bytes)) {
+                String message = "CRC verification failed for CSP 2.x packet";
+                log.warn(message);
+                eventProducer.sendWarning(ETYPE_CORRUPTED_PACKET, message);
+                packet.setInvalid();
+            }
         }
 
         packet.setGenerationTime(getGenerationTime(packet));
