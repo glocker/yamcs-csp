@@ -27,12 +27,12 @@ jobs:
       - uses: actions/checkout@v4
 
       - name: Build vector generator image
-        run: docker build --tag yamcs-csp-vector-generator tools/vector-generator
+        run: docker build --tag yamcs-csp2-vector-generator tools/vector-generator
 
       - name: Regenerate vectors with pinned libcsp
         run: |
           mkdir generated-vectors
-          docker run --rm --volume "${{ github.workspace }}/generated-vectors:/out" yamcs-csp-vector-generator
+          docker run --rm --volume "${{ github.workspace }}/generated-vectors:/out" yamcs-csp2-vector-generator
 
       - name: Compare generated files byte-for-byte
         run: diff --recursive --unified csp2/src/test/resources/vectors generated-vectors

@@ -3,11 +3,11 @@
 	<modelVersion>4.0.0</modelVersion>
 
 	<groupId>io.github.glocker</groupId>
-	<artifactId>yamcs-csp</artifactId>
+	<artifactId>yamcs-csp2-parent</artifactId>
 	<version>0.1.0-SNAPSHOT</version>
 	<packaging>pom</packaging>
 
-	<name>yamcs-csp</name>
+	<name>yamcs-csp2</name>
 	<description>CubeSat Space Protocol (CSP) 2.x support for Yamcs</description>
 
 	<licenses>

@@ -41,11 +41,11 @@ libcsp v2.1 does not build natively on macOS because its source expects `<endian
 From repository root:
 
 ```sh
-docker build --tag yamcs-csp-vector-generator tools/vector-generator
+docker build --tag yamcs-csp2-vector-generator tools/vector-generator
 mkdir -p target/generated-vectors
 docker run --rm \
   --volume "$PWD/target/generated-vectors:/out" \
-  yamcs-csp-vector-generator
+  yamcs-csp2-vector-generator
 diff --recursive --unified \
   csp2/src/test/resources/vectors target/generated-vectors
 ```

@@ -144,7 +144,7 @@ def verify_ping(mode, processor, sequence_number):
 
 
 def image_name(mode):
-    return f"yamcs-csp-libcsp-{mode}:48f7fb0"
+    return f"yamcs-csp2-libcsp-{mode}:48f7fb0"
 
 
 def build_images():
