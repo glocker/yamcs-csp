@@ -2,7 +2,7 @@
 
 Yamcs 5.13.7 includes CSP support, but its packet classes use CSP 1.x layout: 4-byte header and 5-bit addresses. Feeding a CSP 2.x frame into that code would decode wrong fields before CRC is even checked.
 
-`csp2` module adds separate packet processors for CSP 2.x. It does not replace Yamcs transport links or turn Yamcs into a CSP router.
+The plugin adds separate packet processors for CSP 2.x. It does not replace Yamcs transport links or turn Yamcs into a CSP router.
 
 Implementation was checked against [libcsp](https://github.com/libcsp/libcsp) v2.1 at commit `48f7fb0b57f610bf65bab1aa2d1357c3b9722782`. Source paths below refer to that commit.
 

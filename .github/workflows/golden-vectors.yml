@@ -7,12 +7,12 @@ on:
   push:
     paths:
       - "tools/vector-generator/**"
-      - "csp2/src/test/resources/vectors/**"
+      - "src/test/resources/vectors/**"
       - ".github/workflows/golden-vectors.yml"
   pull_request:
     paths:
       - "tools/vector-generator/**"
-      - "csp2/src/test/resources/vectors/**"
+      - "src/test/resources/vectors/**"
       - ".github/workflows/golden-vectors.yml"
 
 permissions:
@@ -35,7 +35,7 @@ jobs:
           docker run --rm --volume "${{ github.workspace }}/generated-vectors:/out" yamcs-csp2-vector-generator
 
       - name: Compare generated files byte-for-byte
-        run: diff --recursive --unified csp2/src/test/resources/vectors generated-vectors
+        run: diff --recursive --unified src/test/resources/vectors generated-vectors
 
       - name: Upload regenerated vectors on failure
         if: failure()

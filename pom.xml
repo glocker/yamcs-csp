@@ -3,9 +3,8 @@
 	<modelVersion>4.0.0</modelVersion>
 
 	<groupId>io.github.glocker</groupId>
-	<artifactId>yamcs-csp2-parent</artifactId>
+	<artifactId>yamcs-csp2</artifactId>
 	<version>0.1.0</version>
-	<packaging>pom</packaging>
 
 	<name>yamcs-csp2</name>
 	<description>CubeSat Space Protocol (CSP) 2.x support for Yamcs</description>
@@ -18,10 +17,6 @@
 		</license>
 	</licenses>
 
-	<modules>
-		<module>csp2</module>
-	</modules>
-
 	<properties>
 		<project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
 		<maven.compiler.release>17</maven.compiler.release>
@@ -32,12 +27,6 @@
 	<dependencyManagement>
 		<dependencies>
 			<dependency>
-				<groupId>org.yamcs</groupId>
-				<artifactId>yamcs-core</artifactId>
-				<version>${yamcs.version}</version>
-				<scope>provided</scope>
-			</dependency>
-			<dependency>
 				<groupId>org.junit</groupId>
 				<artifactId>junit-bom</artifactId>
 				<version>${junit.version}</version>
@@ -46,6 +35,21 @@
 			</dependency>
 		</dependencies>
 	</dependencyManagement>
+
+	<dependencies>
+		<dependency>
+			<groupId>org.yamcs</groupId>
+			<artifactId>yamcs-core</artifactId>
+			<version>${yamcs.version}</version>
+			<scope>provided</scope>
+		</dependency>
+
+		<dependency>
+			<groupId>org.junit.jupiter</groupId>
+			<artifactId>junit-jupiter</artifactId>
+			<scope>test</scope>
+		</dependency>
+	</dependencies>
 
 	<build>
 		<pluginManagement>

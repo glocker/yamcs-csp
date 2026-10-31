@@ -47,7 +47,7 @@ docker run --rm \
   --volume "$PWD/target/generated-vectors:/out" \
   yamcs-csp2-vector-generator
 diff --recursive --unified \
-  csp2/src/test/resources/vectors target/generated-vectors
+  src/test/resources/vectors target/generated-vectors
 ```
 
 No `diff` output means generated files match committed vectors byte-for-byte. `Golden vectors` workflow repeats this check every night on Linux.
@@ -80,6 +80,6 @@ Cases cover field boundaries, all priorities, individual and combined flags, emp
 
 Cases named `mdb_*` serve the Mission Database example in [`examples/csp2-live`](../../examples/csp2-live). Telemetry cases use destination 1 (Yamcs) and source 228 (a libcsp node), and the ports defined in that MDB; `mdb_cmd_*` are commands in the opposite direction. Most cases carry the ramp payload `01 02 03 ...`; housekeeping cases carry explicit bytes, listed next to the table in `vector_generator.c`.
 
-RDP, HMAC and fragmentation bits are included as header values only. Generator does not create protocol data required by those features because `csp2` does not process them.
+RDP, HMAC and fragmentation bits are included as header values only. Generator does not create protocol data required by those features because the plugin does not process them.
 
 Maximum payload follows default libcsp packet buffer: 256 bytes without CRC, 252 bytes with CRC.

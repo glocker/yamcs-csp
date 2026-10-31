@@ -7,7 +7,7 @@ It has two checks:
 - quick smoke test that sends committed libcsp reference frames and checks how the MDB decodes them;
 - slower bidirectional test with real libcsp 2.1 nodes built in Docker.
 
-Example stays outside root Maven reactor so normal `mvn verify` remains fast and does not open HTTP or UDP ports.
+Example stays outside the main Maven build so normal `mvn verify` remains fast and does not open HTTP or UDP ports.
 
 ## Packet path
 
@@ -17,7 +17,7 @@ Example stays outside root Maven reactor so normal `mvn verify` remains fast and
 
 There are two TC links because libcsp transmit CRC coverage is fixed when the node is built: payload only, or header plus payload. Each link has its own postprocessor (`crcMode: data` or `crcMode: header_data`) and its own Yamcs processor. An operator picks the processor that matches the target node; the commands are the same.
 
-Smoke test takes telemetry frames from the libcsp reference vectors in `csp2/src/test/resources/vectors`, the same files the Java tests use. For example, port 11 housekeeping with CRC (default libcsp build):
+Smoke test takes telemetry frames from the libcsp reference vectors in `src/test/resources/vectors`, the same files the Java tests use. For example, port 11 housekeeping with CRC (default libcsp build):
 
 ```text
 80010390B1C1 020138FF40E20100 00006040 CAECF29F

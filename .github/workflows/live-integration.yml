@@ -3,14 +3,14 @@ name: Live integration
 on:
   push:
     paths:
-      - "csp2/**"
+      - "src/**"
       - "examples/csp2-live/**"
       - "pom.xml"
       - "*/pom.xml"
       - ".github/workflows/live-integration.yml"
   pull_request:
     paths:
-      - "csp2/**"
+      - "src/**"
       - "examples/csp2-live/**"
       - "pom.xml"
       - "*/pom.xml"

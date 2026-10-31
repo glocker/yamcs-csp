@@ -21,7 +21,7 @@ BASE_URL = "http://localhost:8090"
 STARTUP_TIMEOUT = int(os.environ.get("YAMCS_STARTUP_TIMEOUT", "90"))
 
 # Telemetry frames come from the libcsp reference vectors used by the Java tests
-VECTORS = ROOT.parents[1] / "csp2" / "src" / "test" / "resources" / "vectors"
+VECTORS = ROOT.parents[1] / "src" / "test" / "resources" / "vectors"
 VECTOR_FILES = ("vectors-data.csv", "vectors-header_data.csv")
 VECTOR_COLUMNS = ("name", "crc_mode", "priority", "destination", "source", "destination_port", "source_port",
                   "flags", "payload_hex", "frame_hex", "expected")

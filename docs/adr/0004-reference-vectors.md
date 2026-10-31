@@ -19,7 +19,7 @@ libcsp is built twice:
 - default build for payload-only CRC;
 - build with `CSP_21` for header-plus-payload CRC.
 
-Generated CSV files and provenance metadata live in `csp2/src/test/resources/vectors`. Scheduled CI rebuilds generator in Linux Docker image and compares output byte-for-byte.
+Generated CSV files and provenance metadata live in `src/test/resources/vectors`. Scheduled CI rebuilds generator in Linux Docker image and compares output byte-for-byte.
 
 ## Trade-off
 

@@ -6,7 +6,7 @@ Yamcs 5.13.7 ships CSP packet processors for version 1.x. CSP 2.x changed header
 
 ## Current state
 
-`csp2` module contains:
+The plugin contains:
 
 - 6-byte CSP 2.x header codec;
 - telemetry preprocessor with destination filtering and CRC-32C verification;
@@ -54,7 +54,7 @@ The Mission Database decodes the frames. See [Decoding frames in the MDB](docs/c
 
 ## Try it with Yamcs
 
-[`examples/csp2-live`](examples/csp2-live) is a small Yamcs application kept outside root Maven reactor. It can run a quick TM/TC smoke test or build real libcsp nodes in Docker and exchange packets in both directions.
+[`examples/csp2-live`](examples/csp2-live) is a small Yamcs application kept outside the main Maven build. It can run a quick TM/TC smoke test or build real libcsp nodes in Docker and exchange packets in both directions.
 
 Start with [example README](examples/csp2-live/README.md).
 
@@ -68,11 +68,11 @@ Start with [example README](examples/csp2-live/README.md).
 
 ```text
 yamcs-csp2/
-├── csp2/                    Java plugin
+├── src/                     Java plugin and its tests
 ├── docs/                    protocol notes and decisions
 ├── examples/csp2-live/      runnable Yamcs integration example
 ├── tools/vector-generator/  libcsp reference vector generator
-└── pom.xml                  parent Maven project
+└── pom.xml                  Maven project
 ```
 
 ## License
